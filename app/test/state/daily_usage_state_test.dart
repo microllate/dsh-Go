@@ -51,11 +51,11 @@ void main() {
     expect(days.map((day) => day.date), ['2026-11-22', '2026-11-21']);
     expect(days.first.total.input, 310);
     expect(days.first.total.unpriced, 1);
-    expect(days.first.total.usd, isNull);
+    expect(days.first.total.cny, isNull);
     expect(days.last.total.input, 310);
     expect(days.last.total.output, 20);
     expect(days.last.total.cacheRead, 200);
-    expect(days.last.total.usd, closeTo(0.0000291, 1e-10));
+    expect(days.last.total.cny, closeTo(0.000194, 1e-10));
   });
 
   test('splits persisted replies at weekday peak boundaries', () async {
@@ -81,7 +81,10 @@ void main() {
     expect(offPeak.input, peak.input);
     expect(peak.output, 3 * 20);
     expect(offPeak.cacheRead, 3 * 200);
-    expect(peak.usd, closeTo(3 * 0.0000582, 1e-10));
-    expect(offPeak.usd, closeTo(3 * 0.0000291, 1e-10));
+    expect(peak.cost!.hit, closeTo(3 * 0.000008, 1e-10));
+    expect(peak.cost!.miss, closeTo(3 * 0.000220, 1e-10));
+    expect(peak.cost!.out, closeTo(3 * 0.000160, 1e-10));
+    expect(peak.cny, closeTo(3 * 0.000388, 1e-10));
+    expect(offPeak.cny, closeTo(3 * 0.000194, 1e-10));
   });
 }

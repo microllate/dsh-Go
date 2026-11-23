@@ -20,20 +20,27 @@ class DailyUsage {
   UsageTotals get total => peak + offPeak;
 }
 
+typedef UsagePrice = ({double hit, double miss, double out});
+
 class UsageTotals {
-  const UsageTotals({this.input = 0, this.output = 0, this.cacheRead = 0, this.usd, this.unpriced = 0});
+  const UsageTotals({this.input = 0, this.output = 0, this.cacheRead = 0, this.cost, this.unpriced = 0});
 
   final int input;
   final int output;
   final int cacheRead;
-  final double? usd;
+  final UsagePrice? cost;
+  double? get cny => cost == null ? null : cost!.hit + cost!.miss + cost!.out;
   final int unpriced;
 
   UsageTotals operator +(UsageTotals other) => UsageTotals(
     input: input + other.input,
     output: output + other.output,
     cacheRead: cacheRead + other.cacheRead,
-    usd: usd == null && other.usd == null ? null : (usd ?? 0) + (other.usd ?? 0),
+    cost: cost == null && other.cost == null ? null : (
+      hit: (cost?.hit ?? 0) + (other.cost?.hit ?? 0),
+      miss: (cost?.miss ?? 0) + (other.cost?.miss ?? 0),
+      out: (cost?.out ?? 0) + (other.cost?.out ?? 0),
+    ),
     unpriced: unpriced + other.unpriced,
   );
 }
@@ -60,15 +67,16 @@ class DailyUsageController extends AsyncNotifier<List<DailyUsage>> {
       (
         'deepseek-official',
         'deepseek-flash' || 'deepseek-v4-flash' || 'deepseek-v4-flash-vision-exp',
-      ) => tavernDeepSeekFlash,
-      ('deepseek-official', 'deepseek-v4-pro') => tavernDeepSeekPro,
+      ) => (hit: 0.04, miss: 2.0, out: 8.0),
+      ('deepseek-official', 'deepseek-v4-pro') => (hit: 0.30, miss: 9.0, out: 27.0),
       _ => null,
     };
-    final usd = price == null
-        ? null
-        : (hit * price.hit + miss * price.miss + usage.outputTokens * price.out) *
-              (tavernDeepSeekPeak(event.time) ? 1 : 0.5) /
-              1e6;
+    final factor = (tavernDeepSeekPeak(event.time) ? 1.0 : 0.5) / 1e6;
+    final cost = price == null ? null : [
+      hit * price.hit * factor,
+      miss * price.miss * factor,
+      usage.outputTokens * price.out * factor,
+    ];
 
     final local = event.time.toLocal();
     final day = local.toIso8601String().split('T').first;
@@ -78,7 +86,7 @@ class DailyUsageController extends AsyncNotifier<List<DailyUsage>> {
       final prefs = await SharedPreferences.getInstance();
       final entries = _entries(prefs.getString(key));
       if (entries.containsKey(id)) return;
-      entries[id] = [hit + miss, usage.outputTokens, hit, usd];
+      entries[id] = [hit + miss, usage.outputTokens, hit, cost];
       if (!await prefs.setString(key, jsonEncode(entries))) {
         // SharedPreferences updates its in-memory cache before writing to disk.
         await prefs.reload();
@@ -107,15 +115,21 @@ class DailyUsageController extends AsyncNotifier<List<DailyUsage>> {
     var peak = const UsageTotals();
     var offPeak = const UsageTotals();
     for (final record in entries.entries) {
-      if (record.value case [final int input, final int output, final int cacheRead, final num? usd]) {
+      if (record.value case [final int input, final int output, final int cacheRead, final Object? storedCost]) {
         // The existing ledger key includes the completion time in epoch milliseconds.
         if (jsonDecode(record.key) case [String _, int _, final int timestamp]) {
+          // Older entries stored only a combined USD estimate.
+          final cost = switch (storedCost) {
+            [final num hit, final num miss, final num out] =>
+              (hit: hit.toDouble(), miss: miss.toDouble(), out: out.toDouble()),
+            _ => null,
+          };
           final totals = UsageTotals(
             input: input,
             output: output,
             cacheRead: cacheRead,
-            usd: usd?.toDouble(),
-            unpriced: usd == null ? 1 : 0,
+            cost: cost,
+            unpriced: cost == null ? 1 : 0,
           );
           if (tavernDeepSeekPeak(DateTime.fromMillisecondsSinceEpoch(timestamp, isUtc: true))) {
             peak += totals;

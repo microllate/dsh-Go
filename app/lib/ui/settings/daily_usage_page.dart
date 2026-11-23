@@ -51,14 +51,17 @@ class DailyUsagePage extends ConsumerWidget {
   }
 
   static Widget _totals(L10n l10n, NumberFormat tokens, String title, UsageTotals usage) {
+    String amount(double cny) => l10n.activityUsageEstimatedCost('¥', cny.toStringAsFixed(8));
+    String line(String label, int count, double? cny) => [
+      label.trim(),
+      tokens.format(count),
+      if (cny != null) amount(cny),
+    ].join(' · ');
     final lines = [
-      [
-        '${l10n.activityInput} ${tokens.format(usage.input)}',
-        '${l10n.activityOutput} ${tokens.format(usage.output)}',
-        '${l10n.activityCacheHit} ${tokens.format(usage.cacheRead)}',
-      ].join(' · '),
-      if (usage.usd case final usd?)
-        l10n.activityUsageEstimatedCost('US\$', usd.toStringAsFixed(6)),
+      line(l10n.activityStepCacheHit, usage.cacheRead, usage.cost?.hit),
+      line(l10n.activityStepCacheMiss, usage.input - usage.cacheRead, usage.cost?.miss),
+      line(l10n.activityOutput, usage.output, usage.cost?.out),
+      if (usage.cny case final cny?) '${l10n.viewChartTotal} ${amount(cny)}',
       if (usage.unpriced > 0) l10n.tavernSessionUsageUnpriced(usage.unpriced),
     ];
     return ListTile(title: Text(title), subtitle: Text(lines.join('\n')));
