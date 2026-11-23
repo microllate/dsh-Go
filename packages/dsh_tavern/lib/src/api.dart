@@ -949,8 +949,8 @@ abstract interface class Tavern {
   /// does not cancel the current turn; chat null leaf values restore inheritance.
   Future<TavernToolPolicyWriteResult> setToolPolicy(Map<String, Object?> patch, {String? chatId});
 
-  /// Fires whenever the current path changes (a turn, a swipe, an edit) so the
-  /// screen re-reads [path].
+  /// Fires on committed path changes such as message creation, finalization,
+  /// swipes and edits. In-progress reply text arrives through the turn stream.
   Stream<void> pathChanges(String chatId);
 
   /// The recorded request for a node, or the chat's latest admitted attempt

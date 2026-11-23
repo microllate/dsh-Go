@@ -51,6 +51,21 @@ void main() {
     await directory.delete(recursive: true);
   });
 
+  test('distinguishes checkpoint commits from normal message changes', () async {
+    final changes = <({String chatId, bool bodyOnly})>[];
+    final subscription = store.committedChanges.listen(changes.add);
+    addTearDown(subscription.cancel);
+    store.beginStreamingWrites();
+    try {
+      store.writeStreamingBody(chat, node.nodeId, text: 'partial reply');
+    } finally {
+      store.endStreamingWrites();
+    }
+    store.updateMessage(chat, node.nodeId, text: 'final reply');
+    await Future<void>.delayed(Duration.zero);
+    expect(changes, [(chatId: chat, bodyOnly: true), (chatId: chat, bodyOnly: false)]);
+  });
+
   test('checkpoint reads project body together without rewriting metadata or FTS', () {
     final before = _row(database, node.nodeId);
     final beforeChat = store.chat(chat);

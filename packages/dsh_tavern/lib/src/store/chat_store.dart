@@ -268,7 +268,7 @@ class ChatStore {
   final Database _db;
   final DateTime Function() _clock;
   final String Function() _createId;
-  final _changes = StreamController<String>.broadcast();
+  final _changes = StreamController<({String chatId, bool bodyOnly})>.broadcast();
   final _presetChanges = StreamController<void>.broadcast();
   final _changedChats = <String>{};
   final _displayVersions = <String, Object>{};
@@ -286,7 +286,9 @@ class ChatStore {
   /// Pure streaming-body checkpoints skip it, but still publish [changes].
   void Function(Set<String> chatIds, bool presetsChanged)? committedObserver;
 
-  Stream<String> get changes => _changes.stream;
+  Stream<String> get changes => committedChanges.map((change) => change.chatId);
+
+  Stream<({String chatId, bool bodyOnly})> get committedChanges => _changes.stream;
 
   /// Preset records and selections changed in a committed outer transaction.
   /// Several edits in one transaction emit once; rolled-back edits never emit.
@@ -520,7 +522,7 @@ class ChatStore {
         committedObserver?.call(Set<String>.unmodifiable(changed), presetsChanged);
       }
       for (final chatId in changed) {
-        _changes.add(chatId);
+        _changes.add((chatId: chatId, bodyOnly: bodyOnly));
       }
       if (presetsChanged) {
         _presetChanges.add(null);
@@ -1455,9 +1457,9 @@ ORDER BY n.seq
   /// Reads the entire ancestor path of an explicit leaf, including inactive
   /// branches and stored extra/original fields. There is no 60-message default.
   /// A non-null leaf uses two SELECTs: the chat check and the recursive query.
-  List<StoredNode> historyTo(String chatId, String? leafId) {
+  List<StoredNode> historyTo(String chatId, String? leafId, {int? limit}) {
     _chatRow(chatId);
-    return [for (final row in _ancestorRows(chatId, leafId)) _storedNode(row)];
+    return [for (final row in _ancestorRows(chatId, leafId, limit: limit)) _storedNode(row)];
   }
 
   List<StoredHistoryLink> historyLinksTo(String chatId, String? leafId) {

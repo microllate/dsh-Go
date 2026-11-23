@@ -12,7 +12,6 @@ import '../../../l10n/l10n.dart';
 import '../../../speech/read_aloud.dart';
 import '../../speech/speech_ui.dart';
 import '../../common/expand_reveal.dart';
-import '../../common/fluid_bits.dart';
 import '../../common/typing_indicator.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/theme.dart';
@@ -21,6 +20,7 @@ import '../../plugins/native/message_plugin_menu.dart';
 import '../../share/share_entry.dart' show shareReply;
 import '../render/markdown_body.dart';
 import 'message_actions.dart';
+import 'message_selection.dart';
 import 'stream_row.dart';
 import 'thinking_pill.dart';
 
@@ -43,9 +43,7 @@ const _firstTextIn = Duration(milliseconds: 200);
 ///                    ↻ 重新回答只给整个对话的最后一条)
 /// ```
 ///
-/// ⇪ 和菜单里的「分享」打开同一个分享面板。长按或 ⋯:同一个消息菜单(复制 /
-/// 选择文字 / 引用 / 分享 / 重新回答 / 从这里分叉)。正文因此不再直接长按选字,选字走菜单里的
-/// "选择文字",选中一段还能「引用」。
+/// 正文可就地长按选字和引用。选区上的「更多」和回复下方的 ⋯ 打开消息菜单。
 class AssistantMessage extends StatefulWidget {
   const AssistantMessage({
     super.key,
@@ -136,7 +134,7 @@ class _AssistantMessageState extends State<AssistantMessage> {
   Widget _markdown(String text, bool streaming) {
     final reveal = _reveal = _reveal || (streaming && _startedEmpty && AppMotion.fluid(context));
     if (_body == null || _bodyText != text || _bodyStreaming != streaming || _bodyReveal != reveal) {
-      // Long-press opens the menu; selecting text is one of its entries.
+      // The surrounding MessageSelection owns text selection.
       // repairBareViews: a model that forgets the ```dsh-ui fence still gets
       // its view drawn instead of a wall of JSON.
       _body = MarkdownBody(text: text, streaming: streaming, reveal: reveal, selectable: false, repairBareViews: true);
@@ -184,8 +182,7 @@ class _AssistantMessageState extends State<AssistantMessage> {
     }
 
     final actions = widget.showActions && !streaming && text.isNotEmpty;
-    final reply = HoldLift(
-      behavior: HitTestBehavior.opaque,
+    final reply = Semantics(
       onLongPress: streaming || text.isEmpty ? null : () => _menu(text),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -200,7 +197,12 @@ class _AssistantMessageState extends State<AssistantMessage> {
             if (text.isNotEmpty && !_textAfterThinking) const SizedBox(height: 8),
           ],
           if (text.isNotEmpty)
-            _textAfterThinking ? _FirstTextIn(child: _markdown(text, streaming)) : _markdown(text, streaming),
+            MessageSelection(
+              text: text,
+              onQuote: widget.onQuote,
+              onMore: streaming ? null : () => _menu(text),
+              child: _textAfterThinking ? _FirstTextIn(child: _markdown(text, streaming)) : _markdown(text, streaming),
+            ),
           if (item.interrupted) const _InterruptedMark(),
           // 一轮结束时和输入条上的胶囊同一节奏展开:胶囊收回多少,这里长出
           // 多少,回答不会先被顶上去再落回来。打开对话时已结束的轮直接展开。

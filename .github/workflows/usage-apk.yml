@@ -35,13 +35,18 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends fonts-noto-cjk fonts-noto-cjk-extra
-      - name: Prepare app and test daily usage
+      - name: Test chat and daily usage
         env:
           DSH_TEST_FONT_DIR: /usr/share/fonts/opentype/noto
         working-directory: app
         run: |
           flutter pub get --enforce-lockfile
-          flutter test test/state/daily_usage_state_test.dart
+          flutter test test/state/daily_usage_state_test.dart test/chat/message_selection_test.dart test/chat/message_actions_test.dart test/chat/message_flow_test.dart test/chat/fork_toast_test.dart
+      - name: Test Tavern streaming checkpoints
+        working-directory: packages/dsh_tavern
+        run: |
+          dart pub get --enforce-lockfile
+          dart test test/t23_stream_store_test.dart
       - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
         with:
           packages: 'platform-tools'

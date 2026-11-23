@@ -250,9 +250,11 @@ class TavernEngine implements Tavern {
       _directors.characterChanged(id);
       _notifyLists();
     };
-    _storeSubscription = _store.changes.listen((chatId) {
+    _storeSubscription = _store.committedChanges.listen((change) {
       if (_closed) return;
-      _paths.add(chatId);
+      final (:chatId, :bodyOnly) = change;
+      // The turn stream has already delivered the body delta to the chat.
+      if (!bodyOnly) _paths.add(chatId);
       _directors.changed(chatId);
       _scripts.nativeChanged(chatId);
       if (!_mainBusy(chatId)) _notifyLists();
@@ -416,7 +418,7 @@ class TavernEngine implements Tavern {
   late final _chatCodec = ChatJsonlCodec(clock: _clock);
   final _presetCodec = const PresetCodec();
   late final _NativeGlobals _globalVariables;
-  late final StreamSubscription<String> _storeSubscription;
+  late final StreamSubscription<({String chatId, bool bodyOnly})> _storeSubscription;
   late final StreamSubscription<void> _personaSubscription;
   final _charactersChanged = StreamController<void>.broadcast();
   final _chatsChanged = StreamController<void>.broadcast();
@@ -4164,7 +4166,7 @@ class TavernEngine implements Tavern {
           counter: counter,
           worldSettings: worldSettings,
         );
-        history = historyWindow?.nodes ?? _historyTo(chatId, parent);
+        history = historyWindow?.nodes ?? await _readCompletePromptHistory(this, turn, parent);
       } finally {
         turn.profile?.record('history_read', historyAt!);
       }
@@ -4296,7 +4298,7 @@ class TavernEngine implements Tavern {
         final worldHistoryAt = turn.profile?.now;
         try {
           if (directorBooks.any((book) => !_plainPromptData(book.raw))) {
-            final complete = _historyTo(chatId, parent);
+            final complete = await _readCompletePromptHistory(this, turn, parent);
             historyWindow.bodyNodes += complete.length;
             // The macro context owns this live list. Earlier admitted fields
             // only used pure names; do not replay them or the independent

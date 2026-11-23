@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 
 import '../../../state/composer_quote.dart' show splitQuote;
 import '../../common/expand_reveal.dart';
-import '../../common/fluid_bits.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/theme.dart';
 import '../media/generate_header.dart';
@@ -14,6 +13,7 @@ import '../media/media_format.dart' show mediaParamsLine;
 import '../mention/mention_chip.dart';
 import '../secret_mask.dart';
 import 'message_actions.dart';
+import 'message_selection.dart';
 import 'quote_chip.dart';
 
 /// 用户消息:**右对齐的软气泡**,比页面深一档,像"按进去"的。
@@ -21,7 +21,7 @@ import 'quote_chip.dart';
 /// 禁配:气泡底上只用主文字 / 次级文字;三级文字(4.32)与主色(4.22)
 /// 不过 AA。
 ///
-/// 长按气泡:复制 / 选择文字 / 编辑后重发([onEdit]),和回复同一个菜单。
+/// 长按正文就地选字，选区上的「更多」打开消息菜单。
 ///
 /// 以引用块开头的消息(引用追问),引文画在气泡顶部([BubbleQuote]),
 /// 下面是正文;复制、选择文字、编辑拿到的仍是发出去的原文。
@@ -97,7 +97,7 @@ class UserBubble extends StatelessWidget {
     final shown = generate?.description ?? text;
     final (:quote, :body) = splitQuote(shown);
     final interactive = pendingLabel == null;
-    // Selecting goes through the menu ("选择文字"): long-press is the menu.
+    // Long-press selects text in place.
     // `@` references draw as chips; text with a credential stays a plain
     // SecretText.
     Widget content = ReferenceText(quote == null ? shown : body, style: style, interactive: interactive);
@@ -113,17 +113,18 @@ class UserBubble extends StatelessWidget {
       );
     }
 
-    // Its own semantics node, carrying the text and the long-press action.
+    final bodySurface = DecoratedBox(
+      decoration: ShapeDecoration(color: surfaces.userBubble, shape: AppShape.bubble),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: MessageSelection(text: shown, onMore: () => _menu(context), child: content),
+      ),
+    );
     final bubble = Semantics(
       container: true,
       header: true,
-      child: HoldLift(
-        onLongPress: () => _menu(context),
-        child: DecoratedBox(
-          decoration: ShapeDecoration(color: surfaces.userBubble, shape: AppShape.bubble),
-          child: Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), child: content),
-        ),
-      ),
+      onLongPress: () => _menu(context),
+      child: bodySurface,
     );
 
     return LayoutBuilder(

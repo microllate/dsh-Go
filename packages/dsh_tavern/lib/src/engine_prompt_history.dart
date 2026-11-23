@@ -23,6 +23,34 @@ class _PromptHistoryWindow {
   ];
 }
 
+// Preserve complete history for dynamic macros, yielding between reads so
+// preparing a long prompt does not monopolize the event loop.
+Future<List<StoredNode>> _readCompletePromptHistory(TavernEngine engine, _Turn turn, String? leaf) async {
+  final chatId = turn.chat.id;
+  final version = engine._store.displayVersion(chatId);
+  final reversed = <StoredNode>[];
+  final seen = <String>{};
+  var cursor = leaf;
+  while (cursor != null) {
+    final page = engine._store.historyTo(chatId, cursor, limit: 32);
+    for (final node in page.reversed) {
+      final id = node.message.nodeId;
+      if (!seen.add(id)) return engine._historyTo(chatId, leaf);
+      reversed.add(node);
+    }
+    cursor = page.first.message.parentId;
+    if (cursor == null) break;
+    await Future<void>.delayed(Duration.zero);
+    turn.cancellation.check();
+    _requireOrdinaryOwnership(engine, turn, StoredToolPhase.native);
+    if (!identical(version, engine._store.displayVersion(chatId))) {
+      // A concurrent edit invalidates the partially read path.
+      return engine._historyTo(chatId, leaf);
+    }
+  }
+  return reversed.reversed.toList();
+}
+
 // An unchanged suffix can be bounded before assembly. Dynamic configurations
 // keep the original complete history and macro order; no macro is speculated
 // or replayed to decide whether a message will fit.
