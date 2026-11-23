@@ -49,7 +49,7 @@ jobs:
       - name: Test Tavern streaming checkpoints
         working-directory: packages/dsh_tavern
         run: |
-          dart pub get --enforce-lockfile
+          dart pub get
           dart test test/t23_stream_store_test.dart
       - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
         with:
