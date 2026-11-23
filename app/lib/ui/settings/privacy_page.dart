@@ -15,6 +15,7 @@ import '../engine_settings/schema_form.dart';
 import '../share_code/profile_share_sheet.dart';
 import '../share_hosted/hosted_links_tile.dart';
 import '../shell/page_frame.dart';
+import 'daily_usage_page.dart';
 import 'settings_widgets.dart';
 import 'usage_stats_section.dart';
 
@@ -35,6 +36,16 @@ class PrivacyPage extends ConsumerWidget {
           children: [
             const HostedLinksSettingsTile(icon: false),
             SettingsTile(spot: Spots.shareConfig, onTap: () => unawaited(showShareProfileSheet(context))),
+          ],
+        ),
+        SettingsSection(
+          title: l10n.commonThisPhone,
+          children: [
+            ListTile(
+              title: Text(l10n.tavernUsageStats),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => unawaited(DailyUsagePage.open(context)),
+            ),
           ],
         ),
         const UsageStatsSection(),

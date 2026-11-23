@@ -11,6 +11,7 @@ import '../usage/usage_stats.dart';
 import 'attachments.dart';
 import 'chat_error_text.dart';
 import 'connection_state.dart';
+import 'daily_usage_state.dart';
 import 'hosts_state.dart';
 import 'models_state.dart';
 import 'notify_state.dart' show appForegroundProvider;
@@ -837,6 +838,7 @@ class ChatController extends Notifier<ChatState> {
             _trackModel(event);
             _trackCommands(event);
             _countTokens(event);
+            _recordDailyUsage(event);
             final reconcile =
                 (event is InboxSplicedEvent && event.seq > _transcript.cursor) ||
                 (event is SessionSnapshotEvent && event.isResync);
@@ -1448,6 +1450,23 @@ class ChatController extends Notifier<ChatState> {
     ref
         .read(usageStatsProvider.notifier)
         .tokens(usage.inputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0), usage.outputTokens);
+  }
+
+  void _recordDailyUsage(DshEvent event) {
+    if (!ref.mounted || ref.read(activeConnectionProvider).value?.isLocal != true) return;
+    final cursor = _transcript.cursor;
+    // A resync may deliver replies missed during a temporary disconnect.
+    // The initial snapshot is history and does not seed this ledger.
+    final Iterable<AssistantMessageEvent> replies = switch (event) {
+      AssistantMessageEvent() => [event],
+      SessionSnapshotEvent(:final events, isResync: true) when cursor >= 0 =>
+        events.whereType<AssistantMessageEvent>(),
+      _ => const [],
+    };
+    for (final reply in replies) {
+      if (reply.seq <= cursor || reply.usage == null) continue;
+      unawaited(ref.read(dailyUsageProvider.notifier).record(sessionId, reply));
+    }
   }
 
   /// Retry the same text and attachment selections. Picking again is a new

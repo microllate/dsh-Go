@@ -1,0 +1,53 @@
+name: DSH Go usage APK
+
+on:
+  push:
+    branches: [base-v1.1.0]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: usage-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      DSH_MAVEN_MIRRORS: '0'
+      DSH_GO_SIDE_BY_SIDE: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: true
+      - name: Prepare app and test daily usage
+        working-directory: app
+        run: |
+          flutter pub get --enforce-lockfile
+          flutter test test/state/daily_usage_state_test.dart
+      - name: Prepare Android SDK
+        run: |
+          ndk_version=$(python3 -c 'import json; print(json.load(open("runtime/tawcroot/source.json"))["ndkVersion"])')
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;$ndk_version"
+      - name: Build ARM64 runtime
+        run: bash runtime/build-runtime.sh arm64-v8a
+      - name: Build ARM64 APK
+        run: bash tooling/build-apk.sh -f arm64 --keep-daemon
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dsh-go-1.1.0-usage-arm64
+          path: app/build/app/outputs/flutter-apk/app-arm64-release.apk
+          compression-level: 0
+          if-no-files-found: error

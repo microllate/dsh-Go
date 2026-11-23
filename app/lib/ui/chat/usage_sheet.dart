@@ -13,6 +13,7 @@ import '../../state/subscriptions_state.dart';
 import '../../state/providers_state.dart';
 import '../common/app_sheet.dart';
 import '../common/sheet_title_bar.dart';
+import '../settings/daily_usage_page.dart';
 import '../theme/theme.dart';
 import 'balance_widgets.dart';
 
@@ -186,6 +187,13 @@ class UsageSheet extends ConsumerWidget {
           children: [
             SheetTitleBar(l10n.activityUsage),
             SessionUsageSections(usage: usage, pricing: pricing, sheet: true, margin: _margin),
+            Padding(
+              padding: _margin,
+              child: TextButton(
+                onPressed: () => DailyUsagePage.open(context),
+                child: Text(l10n.tavernUsageStats),
+              ),
+            ),
             const SizedBox(height: 16),
             if (Subscription.fromWire(model?.provider) case final subscription?)
               _SubscriptionQuota(subscription: subscription, margin: _margin)
