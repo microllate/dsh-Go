@@ -47,7 +47,7 @@ object PhoneAndroidShell {
 
     fun run(request: Request, owner: PhoneTasks.Owner, tasks: PhoneTasks, scope: SerialWorker.Scope,
             executor: PhoneShellExecutor?, enabled: () -> Boolean, locked: () -> Boolean,
-            gate: () -> UserGate?, ui: PhoneUiText): Map<String, Any?> {
+            gate: () -> UserGate?, ui: PhoneUiText, noAsk: () -> Boolean = { false }): Map<String, Any?> {
         fun live() = tasks.isCurrent(owner) && !tasks.isPaused && enabled() && !locked() &&
             !Thread.currentThread().isInterrupted
         if (locked()) return failure("locked")
@@ -56,6 +56,7 @@ object PhoneAndroidShell {
         return executor.execute(owner.taskId, request.command, request.timeoutMs, ::live) { backend, uid ->
             if (!live()) Decision.STOP
             else if (!ShellProtocol.validUid(backend, uid)) Decision.DENY
+            else if (noAsk()) Decision.ALLOW_ONCE
             else {
                 val prompt = ConfirmRequest(
                     ui.get("phone_shell_confirm",
