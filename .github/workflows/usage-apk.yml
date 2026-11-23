@@ -18,7 +18,6 @@ jobs:
     timeout-minutes: 60
     env:
       DSH_MAVEN_MIRRORS: '0'
-      DSH_GO_SIDE_BY_SIDE: '1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -66,6 +65,12 @@ jobs:
           key: ${{ steps.runtime.outputs.cache-primary-key }}
       - name: Build ARM64 APK
         run: bash tooling/build-apk.sh -f arm64 --keep-daemon
+      - name: Verify original application ID
+        run: |
+          apk=app/build/app/outputs/flutter-apk/app-arm64-release.apk
+          app_id=$(apkanalyzer manifest application-id "$apk")
+          echo "Application ID is $app_id"
+          test "$app_id" = io.github.ccch1mneyyy.dsh_app
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dsh-go-1.1.0-usage-arm64
