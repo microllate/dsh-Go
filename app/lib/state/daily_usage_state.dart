@@ -1,10 +1,11 @@
 import 'dart:convert';
 
 import 'package:dsh_client/dsh_client.dart';
+import 'package:dsh_tavern/dsh_tavern.dart' show TavernUsage;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../tavern/tavern_session_usage.dart';
+import '../usage/deepseek_billing_time.dart';
 
 final dailyUsageProvider = AsyncNotifierProvider<DailyUsageController, List<DailyUsage>>(
   DailyUsageController.new,
@@ -48,6 +49,7 @@ class UsageTotals {
 /// Credits provider-reported replies to their completion day in the device time zone.
 class DailyUsageController extends AsyncNotifier<List<DailyUsage>> {
   static const _prefix = 'local_chat_usage_v1.';
+  static var _tavernRequest = 0;
   Future<void> _writes = Future.value();
 
   @override
@@ -58,35 +60,69 @@ class DailyUsageController extends AsyncNotifier<List<DailyUsage>> {
     if (usage == null || event.seq < 0 || event.time.millisecondsSinceEpoch <= 0) {
       return Future.value();
     }
-    final hit = usage.cacheReadTokens ?? 0;
-    final miss = usage.inputTokens + (usage.cacheWriteTokens ?? 0);
-    if (hit + miss + usage.outputTokens <= 0) return Future.value();
-
     final source = event.message.source;
-    final price = switch ((source.provider, source.model)) {
+    return _record(
+      sessionId: sessionId,
+      sequence: event.seq,
+      time: event.time,
+      hit: usage.cacheReadTokens ?? 0,
+      miss: usage.inputTokens + (usage.cacheWriteTokens ?? 0),
+      output: usage.outputTokens,
+      official: source.provider == 'deepseek-official',
+      model: source.model,
+    );
+  }
+
+  Future<void> recordTavern(Uri endpoint, TavernUsage usage, DateTime time) {
+    final input = usage.promptTokens < 0 ? 0 : usage.promptTokens;
+    final hit = usage.cacheHitTokens.clamp(0, input).toInt();
+    return _record(
+      sessionId: 'tavern:${time.microsecondsSinceEpoch}',
+      sequence: _tavernRequest++,
+      time: time,
+      hit: hit,
+      miss: input - hit,
+      output: usage.completionTokens < 0 ? 0 : usage.completionTokens,
+      official: endpoint.scheme == 'https' && endpoint.host == 'api.deepseek.com' && endpoint.port == 443,
+      model: usage.model,
+    );
+  }
+
+  Future<void> _record({
+    required String sessionId,
+    required int sequence,
+    required DateTime time,
+    required int hit,
+    required int miss,
+    required int output,
+    required bool official,
+    required String? model,
+  }) {
+    if (hit + miss + output <= 0) return Future.value();
+    final price = switch ((official, model)) {
       (
-        'deepseek-official',
+        true,
         'deepseek-flash' || 'deepseek-v4-flash' || 'deepseek-v4-flash-vision-exp',
       ) => (hit: 0.04, miss: 2.0, out: 8.0),
-      ('deepseek-official', 'deepseek-v4-pro') => (hit: 0.30, miss: 9.0, out: 27.0),
+      (true, 'deepseek-v4-pro') => (hit: 0.30, miss: 9.0, out: 27.0),
       _ => null,
     };
-    final factor = (tavernDeepSeekPeak(event.time) ? 1.0 : 0.5) / 1e6;
+    final factor = (tavernDeepSeekPeak(time) ? 1.0 : 0.5) / 1e6;
     final cost = price == null ? null : [
       hit * price.hit * factor,
       miss * price.miss * factor,
-      usage.outputTokens * price.out * factor,
+      output * price.out * factor,
     ];
 
-    final local = event.time.toLocal();
+    final local = time.toLocal();
     final day = local.toIso8601String().split('T').first;
     final key = '$_prefix$day';
-    final id = jsonEncode([sessionId, event.seq, event.time.millisecondsSinceEpoch]);
+    final id = jsonEncode([sessionId, sequence, time.millisecondsSinceEpoch]);
     final write = _writes.then((_) async {
       final prefs = await SharedPreferences.getInstance();
       final entries = _entries(prefs.getString(key));
       if (entries.containsKey(id)) return;
-      entries[id] = [hit + miss, usage.outputTokens, hit, cost];
+      entries[id] = [hit + miss, output, hit, cost];
       if (!await prefs.setString(key, jsonEncode(entries))) {
         // SharedPreferences updates its in-memory cache before writing to disk.
         await prefs.reload();

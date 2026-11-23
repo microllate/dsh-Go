@@ -5,10 +5,13 @@
 // built-in one) on every call; the engine never stores a key. Tests swap in
 // the preview stand-in (tavern_preview.dart).
 
+import 'dart:async';
+
 import 'package:dsh_tavern/dsh_tavern.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../state/daily_usage_state.dart';
 import '../state/settings_state.dart';
 import 'deferred_tavern.dart';
 import 'tavern_channels.dart';
@@ -18,7 +21,16 @@ import 'tavern_settings.dart';
 final tavernProvider = Provider<Tavern>((ref) {
   final tavern = DeferredTavern(() async {
     final support = await getApplicationSupportDirectory();
-    return openTavern('${support.path}/tavern');
+    return openTavern(
+      '${support.path}/tavern',
+      modelClient: TavernModelClient(
+        onRequestUsage: (endpoint, usage) {
+          if (ref.mounted) {
+            unawaited(ref.read(dailyUsageProvider.notifier).recordTavern(endpoint, usage, DateTime.now()));
+          }
+        },
+      ),
+    );
   }());
   ref.onDispose(tavern.close);
   final keys = ref.read(tavernChannelKeysProvider);

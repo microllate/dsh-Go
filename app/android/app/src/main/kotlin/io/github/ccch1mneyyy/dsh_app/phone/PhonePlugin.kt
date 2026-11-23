@@ -3,6 +3,7 @@ package io.github.ccch1mneyyy.dsh_app.phone
 import io.github.ccch1mneyyy.dsh_app.i18n.AppStrings
 import io.github.ccch1mneyyy.dsh_app.R
 import io.github.ccch1mneyyy.dsh_app.phone.background.BackgroundPreview
+import io.github.ccch1mneyyy.dsh_app.phone.shell.AndroidShellController
 import android.app.Activity
 import android.app.Application
 import android.content.Context
@@ -195,7 +196,7 @@ class PhonePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
                 val args = call.arguments as? Map<*, *>
                 val enabled = args?.get("enabled") as? Boolean
                 val backend = args?.get("backend") as? String
-                if (args?.keys != setOf("enabled", "backend") || enabled == null || backend !in setOf("shizuku", "adb")) {
+                if (args?.keys != setOf("enabled", "backend") || enabled == null || backend !in AndroidShellController.BACKENDS) {
                     result.success(mapOf("ok" to false, "errorCode" to "invalidArguments"))
                 } else if (enabled && !control.isEnabled()) {
                     result.success(mapOf("ok" to false, "errorCode" to "disabled"))

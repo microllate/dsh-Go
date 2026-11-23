@@ -41,16 +41,16 @@ jobs:
               -o "$RUNNER_TEMP/dsh-test-fonts/$name"
           done
           printf 'DSH_TEST_FONT_DIR=%s/dsh-test-fonts\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
-      - name: Test chat and daily usage
+      - name: Test chat, terminal and daily usage
         working-directory: app
         run: |
           flutter pub get --enforce-lockfile
-          flutter test test/state/daily_usage_state_test.dart test/chat/message_selection_test.dart test/chat/message_actions_test.dart test/chat/message_flow_test.dart test/chat/fork_toast_test.dart
-      - name: Test Tavern streaming checkpoints
+          flutter test test/state/daily_usage_state_test.dart test/chat/message_selection_test.dart test/chat/message_actions_test.dart test/chat/message_flow_test.dart test/chat/fork_toast_test.dart test/terminal/terminal_input_configuration_test.dart test/terminal/terminal_page_test.dart
+      - name: Test Tavern streaming and request usage
         working-directory: packages/dsh_tavern
         run: |
           dart pub get
-          dart test test/t23_stream_store_test.dart
+          dart test test/t23_stream_store_test.dart test/model_client_test.dart
       - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
         with:
           packages: 'platform-tools'

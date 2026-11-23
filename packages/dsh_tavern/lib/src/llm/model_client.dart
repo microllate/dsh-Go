@@ -155,11 +155,19 @@ void _observeUsage(ModelCancellation cancellation, ModelUsageReport report) {
 /// An HTTP client is owned by each call so stopping one chat cannot abort a
 /// different chat. Supply [clientFactory] for deterministic transport tests.
 class TavernModelClient {
-  TavernModelClient({http.Client Function()? clientFactory, this.idleTimeout = const Duration(minutes: 5)})
+  TavernModelClient({
+    http.Client Function()? clientFactory,
+    this.idleTimeout = const Duration(minutes: 5),
+    this.onRequestUsage,
+  })
     : _clientFactory = clientFactory ?? http.Client.new;
 
   final http.Client Function() _clientFactory;
   final Duration idleTimeout;
+
+  /// Observes the latest provider counters once per completed or cancelled
+  /// HTTP attempt. Synthetic estimates and attempts without counters are omitted.
+  final void Function(Uri endpoint, TavernUsage usage)? onRequestUsage;
 
   /// [body] is the final, inspected request from the assembler. This method
   /// supplies transport settings and removes DeepSeek-only wire fields for
@@ -251,6 +259,7 @@ class TavernModelClient {
     void Function(int attempt)? onRequestStarted,
   }) async* {
     http.Client? client;
+    TavernUsage? reportedUsage;
     try {
       cancellation.check();
       final request = http.AbortableRequest('POST', uri, abortTrigger: cancellation.whenCancelled)
@@ -317,6 +326,9 @@ class TavernModelClient {
           );
           _observeUsage(cancellation, usageReport);
         }
+        if (result['usage'] case final Map<String, dynamic> usage) {
+          reportedUsage = _usage(usage, result['model'] as String? ?? config.model);
+        }
         if (result['error'] != null) throw _apiError(200, text, key, headers.values);
         final choice = _firstChoice(result);
         final message = _object(choice['message']);
@@ -339,9 +351,9 @@ class TavernModelClient {
           cancellation.check();
           yield fragment;
         }
-        if (result['usage'] case final Map<String, dynamic> usage) {
+        if (reportedUsage case final usage?) {
           cancellation.check();
-          yield ModelUsage(_usage(usage, result['model'] as String? ?? config.model), report: usageReport);
+          yield ModelUsage(usage, report: usageReport);
         }
         if (choice.isEmpty || message.isEmpty) {
           throw const TavernModelException(TavernFailure.server, 'invalid_completion_response');
@@ -386,6 +398,11 @@ class TavernModelClient {
           );
           _observeUsage(cancellation, usageReport);
         }
+        final chunkUsage = switch (data['usage']) {
+          final Map<String, dynamic> usage => _usage(usage, data['model'] as String? ?? config.model),
+          _ => null,
+        };
+        if (chunkUsage != null) reportedUsage = chunkUsage;
         if (data['error'] != null) throw _apiError(200, event, key, headers.values);
         final choice = _firstChoice(data);
         final delta = _object(choice['delta']);
@@ -408,9 +425,9 @@ class TavernModelClient {
         }
         // Some providers send usage with choices: [], others on the finish
         // chunk. It must be read independently of the first choice.
-        if (data['usage'] case final Map<String, dynamic> usage) {
+        if (chunkUsage != null) {
           cancellation.check();
-          yield ModelUsage(_usage(usage, data['model'] as String? ?? config.model), report: usageReport);
+          yield ModelUsage(chunkUsage, report: usageReport);
         }
       }
       if (sawFinish && usageReport == null) {
@@ -431,6 +448,13 @@ class TavernModelClient {
       yield ModelFinished(finishReason, assistantSnapshot: assistant.finish(), finalUsageReport: usageReport);
     } finally {
       client?.close();
+      if (reportedUsage case final usage?) {
+        try {
+          onRequestUsage?.call(uri, usage);
+        } catch (_) {
+          // Usage accounting cannot change the outcome of the model call.
+        }
+      }
     }
   }
 

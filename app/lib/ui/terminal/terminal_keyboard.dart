@@ -83,6 +83,7 @@ class TerminalKeyboardState extends State<TerminalKeyboard> with TextInputClient
   /// keyboard up.
   void show() {
     if (!widget.enabled) return;
+    if (hasConnection && View.of(context).viewInsets.bottom > 0) return;
     flushComposing();
     _close();
     if (!widget.focusNode.hasFocus) {

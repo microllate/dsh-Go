@@ -1,5 +1,7 @@
 package io.github.ccch1mneyyy.dsh_app.phone
 
+import io.github.ccch1mneyyy.dsh_app.phone.shell.ShellProtocol
+
 /** The native backend is selected only by App settings, never by model arguments. */
 fun interface PhoneShellExecutor {
     fun execute(ownerId: Long, command: String, timeoutMs: Long, stillWanted: () -> Boolean,
@@ -53,7 +55,7 @@ object PhoneAndroidShell {
         if (executor == null) return failure("unsupported")
         return executor.execute(owner.taskId, request.command, request.timeoutMs, ::live) { backend, uid ->
             if (!live()) Decision.STOP
-            else if (!(backend == "adb" && uid == 2000 || backend == "shizuku" && uid in setOf(0, 2000))) Decision.DENY
+            else if (!ShellProtocol.validUid(backend, uid)) Decision.DENY
             else {
                 val prompt = ConfirmRequest(
                     ui.get("phone_shell_confirm",

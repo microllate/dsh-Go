@@ -1,5 +1,6 @@
 import 'package:dsh_app/state/daily_usage_state.dart';
 import 'package:dsh_client/dsh_client.dart';
+import 'package:dsh_tavern/dsh_tavern.dart' show TavernUsage;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -86,5 +87,28 @@ void main() {
     expect(peak.cost!.out, closeTo(3 * 0.000160, 1e-10));
     expect(peak.cny, closeTo(3 * 0.000388, 1e-10));
     expect(offPeak.cny, closeTo(3 * 0.000194, 1e-10));
+  });
+
+  test('combines Tavern and ordinary chat and prices only official endpoints', () async {
+    SharedPreferences.setMockInitialValues({});
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await container.read(dailyUsageProvider.future);
+    final notifier = container.read(dailyUsageProvider.notifier);
+    final at = DateTime.utc(2026, 11, 23, 2);
+    const usage = TavernUsage(promptTokens: 100, cacheHitTokens: 80, completionTokens: 9, model: 'deepseek-flash');
+    await notifier.record('session-a', reply(at));
+    await notifier.recordTavern(Uri.parse('https://api.deepseek.com/beta/chat/completions'), usage, at);
+    await notifier.recordTavern(Uri.parse('https://relay.example.test/v1/chat/completions'), usage, at);
+
+    final days = await container.read(dailyUsageProvider.future);
+    final total = days.single.peak;
+    expect(total.input, 510);
+    expect(total.cacheRead, 360);
+    expect(total.output, 38);
+    expect(total.unpriced, 1);
+    expect(total.cost!.hit, closeTo(0.0000112, 1e-10));
+    expect(total.cost!.miss, closeTo(0.000260, 1e-10));
+    expect(total.cost!.out, closeTo(0.000232, 1e-10));
   });
 }

@@ -142,7 +142,8 @@ part 'slash/st_message_bias.dart';
 
 /// App convenience factory. [directory] is the actual tavern data directory,
 /// normally `<app support>/tavern`. No extra path component is appended.
-Future<Tavern> openTavern(String directory) => TavernEngine.openDirectory(Directory(directory));
+Future<Tavern> openTavern(String directory, {TavernModelClient? modelClient}) =>
+    TavernEngine.openDirectory(Directory(directory), modelClient: modelClient);
 
 /// Validates and restores a backup into a closed tavern directory. Open a new
 /// engine after success. Invalid archives/versions never replace the target.

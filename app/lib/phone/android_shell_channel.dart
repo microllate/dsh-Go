@@ -9,11 +9,13 @@ int? _nonNegativeInt(Object? value) => value is int && value >= 0 ? value : null
 
 enum AndroidShellBackend {
   shizuku,
-  adb;
+  adb,
+  root;
 
   static AndroidShellBackend? parse(Object? value) => switch (value) {
     'shizuku' => shizuku,
     'adb' => adb,
+    'root' => root,
     _ => null,
   };
 }

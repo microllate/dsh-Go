@@ -12,7 +12,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:xterm/xterm.dart' show TerminalView;
+import 'package:xterm/xterm.dart' show TerminalView, TerminalViewState;
 
 import 'support.dart';
 
@@ -254,6 +254,17 @@ void main() {
     await settleTerminal(tester);
     expect(clipboard, 'hello');
     expect(find.text('复制'), findsNothing);
+
+    await tester.longPressAt(view.topLeft + const Offset(14, 8));
+    await settleTerminal(tester);
+    final terminal = tester.state<TerminalViewState>(find.byType(TerminalView));
+    final handle = find.byKey(const ValueKey('terminal-selection-end'));
+    expect(handle, findsOneWidget);
+    await tester.drag(handle, Offset(terminal.renderTerminal.cellSize.width * 6, 0));
+    await settleTerminal(tester);
+    await tester.tap(find.text('复制'));
+    await settleTerminal(tester);
+    expect(clipboard, 'hello world');
 
     clipboard = 'echo pasted';
     await tester.longPressAt(view.topLeft + const Offset(14, 8));

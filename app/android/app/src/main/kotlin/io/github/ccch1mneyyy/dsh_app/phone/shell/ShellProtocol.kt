@@ -25,6 +25,7 @@ object ShellProtocol {
         if (timeoutMs !in 100..MAX_TIMEOUT_MS) "invalidTimeout" else null
 
     fun validUid(backend: String, uid: Int): Boolean = when (backend) {
+        "root" -> uid == 0
         "adb" -> uid == 2000
         "shizuku" -> uid == 2000 || uid == 0
         else -> false

@@ -4,6 +4,9 @@ import android.os.Bundle
 import io.github.ccch1mneyyy.dsh_app.phone.background.Bundles
 import io.github.muntashirakon.adb.AdbStream
 import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
+import kotlin.concurrent.thread
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -26,8 +29,8 @@ internal class ShellLink(
         private set
     @Volatile private var instance: String? = null
 
-    fun probe(): Boolean {
-        val response = call(mapOf("op" to "probe"))
+    fun probe(timeoutMs: Long = ShellProtocol.RPC_TIMEOUT_MS): Boolean {
+        val response = call(mapOf("op" to "probe"), timeoutMs)
         val actualUid = response["uid"] as? Int ?: return false
         val peer = response["instance"] as? String ?: return false
         if (response["ok"] != true || response["revision"] != ShellProtocol.REVISION ||
@@ -37,14 +40,14 @@ internal class ShellLink(
         return true
     }
 
-    fun call(values: Map<String, Any?>, beforeSend: () -> Boolean = { true }): Map<String, Any?> = synchronized(serial) {
+    fun call(values: Map<String, Any?>, timeoutMs: Long = ShellProtocol.RPC_TIMEOUT_MS, beforeSend: () -> Boolean = { true }): Map<String, Any?> = synchronized(serial) {
         if (!alive()) throw IOException("transportLost")
         val body = values + mapOf("revision" to ShellProtocol.REVISION, "instance" to instance)
         val future = worker.submit<Bundle> {
             if (!beforeSend()) shellBundle(ShellProtocol.failure("cancelled")) else exchange(shellBundle(body))
         }
         try {
-            future.get(ShellProtocol.RPC_TIMEOUT_MS, TimeUnit.MILLISECONDS).shellMap()
+            future.get(timeoutMs, TimeUnit.MILLISECONDS).shellMap()
         } catch (error: Exception) {
             future.cancel(true)
             close()
@@ -62,15 +65,38 @@ internal class ShellLink(
     }
 
     companion object {
-        fun adb(stream: AdbStream): ShellLink {
+        fun adb(stream: AdbStream): ShellLink =
+            framed("adb", stream.openInputStream(), stream.openOutputStream(), { !stream.isClosed }, { stream.close() })
+
+        fun root(process: Process): ShellLink {
+            // The root manager can write diagnostics while authorization is pending.
+            thread(name = "dsh-shell-root-stderr", isDaemon = true) {
+                runCatching {
+                    process.errorStream.use { error ->
+                        val buffer = ByteArray(4096)
+                        while (error.read(buffer) >= 0) { }
+                    }
+                }
+            }
+            return framed("root", process.inputStream, process.outputStream, { process.isAlive }) {
+                // EOF makes AndroidShellMain destroy any owned command before exiting.
+                try { process.outputStream.close() } finally { process.destroy() }
+            }
+        }
+
+        private fun framed(
+            backend: String,
+            input: InputStream,
+            output: OutputStream,
+            alive: () -> Boolean,
+            close: () -> Unit,
+        ): ShellLink {
             var synced = false
-            val input = stream.openInputStream()
-            val output = stream.openOutputStream()
-            return ShellLink("adb", { request ->
+            return ShellLink(backend, { request ->
                 if (!synced) { ShellWire.sync(input); synced = true }
                 ShellWire.write(output, Bundles.marshal(request))
                 Bundles.unmarshal(ShellWire.read(input) ?: throw IOException("transportLost"))
-            }, { !stream.isClosed }, { stream.close() })
+            }, alive, close)
         }
     }
 }

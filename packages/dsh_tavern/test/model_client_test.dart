@@ -119,6 +119,23 @@ void main() {
     expect(client.closed, isTrue);
   });
 
+  test('accounts for latest usage once per streaming HTTP attempt', () async {
+    final accounted = <(Uri, TavernUsage)>[];
+    final client = _Client((_) async => _sse([
+      {'choices': [], 'usage': {'prompt_tokens': 100, 'completion_tokens': 4}},
+      {'choices': [], 'usage': {'prompt_tokens': 100, 'completion_tokens': 9, 'prompt_cache_hit_tokens': 80}},
+    ]));
+    await TavernModelClient(
+      clientFactory: () => client,
+      onRequestUsage: (endpoint, usage) => accounted.add((endpoint, usage)),
+    ).generate(config: config(), body: const {}, cancellation: ModelCancellation()).drain<void>();
+    final (endpoint, usage) = accounted.single;
+    expect(endpoint.host, 'api.deepseek.com');
+    expect(usage.promptTokens, 100);
+    expect(usage.cacheHitTokens, 80);
+    expect(usage.completionTokens, 9);
+  });
+
   test('a generic non-streaming response reads cached_tokens without DeepSeek fields', () async {
     late Map<String, dynamic> sent;
     final client = _Client((request) async {

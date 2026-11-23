@@ -4,6 +4,7 @@
 
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -106,6 +107,8 @@ class TerminalScreenState extends ConsumerState<TerminalScreen> {
   var _view = GlobalKey<TerminalViewState>();
   final _keyboard = GlobalKey<TerminalKeyboardState>();
   final _pointers = <int, Offset>{};
+  PointerDownEvent? _tapStart;
+  Offset? _selectionDragOffset;
   double? _pinchSpan;
   double _pinchFont = TerminalFontSize.fallback;
   String? _composing;
@@ -198,6 +201,7 @@ class TerminalScreenState extends ConsumerState<TerminalScreen> {
 
   void _pointerDown(PointerDownEvent event) {
     _pointers[event.pointer] = event.position;
+    _tapStart = _pointers.length == 1 && event.buttons == kPrimaryButton ? event : null;
     if (_pointers.length == 2) {
       _pinchSpan = _span();
       _pinchFont = ref.read(terminalFontSizeProvider);
@@ -208,6 +212,9 @@ class TerminalScreenState extends ConsumerState<TerminalScreen> {
   void _pointerMove(PointerMoveEvent event) {
     if (!_pointers.containsKey(event.pointer)) return;
     _pointers[event.pointer] = event.position;
+    if (_tapStart case final tap? when tap.pointer == event.pointer) {
+      if ((event.position - tap.position).distance > kTouchSlop) _tapStart = null;
+    }
     final start = _pinchSpan;
     if (start == null || start < 16 || _pointers.length < 2) return;
     ref.read(terminalFontSizeProvider.notifier).set(_pinchFont * _span() / start);
@@ -216,6 +223,19 @@ class TerminalScreenState extends ConsumerState<TerminalScreen> {
   void _pointerUp(PointerEvent event) {
     _pointers.remove(event.pointer);
     if (_pointers.length < 2) _pinchSpan = null;
+    final tap = _tapStart;
+    if (tap == null || tap.pointer != event.pointer) return;
+    _tapStart = null;
+    if (event is! PointerUpEvent ||
+        event.timeStamp - tap.timeStamp >= kLongPressTimeout ||
+        (event.position - tap.position).distance > kTouchSlop) {
+      return;
+    }
+    // xterm 4.0 does not forward TerminalView.onTapUp. Wait for its existing
+    // gesture recognizers so word selection still wins over reopening the IME.
+    scheduleMicrotask(() {
+      if (mounted && _selection.selection == null) _keyboard.currentState?.show();
+    });
   }
 
   // ── Selection ──
@@ -264,6 +284,74 @@ class TerminalScreenState extends ConsumerState<TerminalScreen> {
     // Over the selection on one line; the middle of the screen across lines.
     final x = range.begin.y == range.end.y ? (begin.dx + end.dx) / 2 : stack.size.width / 2;
     return Offset(x, top);
+  }
+
+  List<Widget> _selectionHandles() {
+    final range = _selection.selection?.normalized;
+    final render = _view.currentState?.renderTerminal;
+    final stack = _stack.currentContext?.findRenderObject();
+    if (range == null || render == null || !render.hasSize || stack is! RenderBox || !stack.hasSize) return const [];
+    const target = 28.0;
+    return [
+      for (final (start, cell) in [(true, range.begin), (false, range.end)])
+        if (render.getOffset(cell).dy + render.cellSize.height >= 0 &&
+            render.getOffset(cell).dy < render.size.height)
+          Builder(
+            key: ValueKey(start ? 'terminal-selection-start' : 'terminal-selection-end'),
+            builder: (context) {
+              final point = stack.globalToLocal(render.localToGlobal(
+                render.getOffset(cell) + Offset(0, render.cellSize.height),
+              ));
+              final color = TerminalPalette.of(context).accent;
+              return Positioned(
+                left: (point.dx - target / 2).clamp(0.0, (stack.size.width - target).clamp(0.0, double.infinity)),
+                top: (point.dy - 6).clamp(0.0, (stack.size.height - target).clamp(0.0, double.infinity)),
+                width: target,
+                height: target,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  dragStartBehavior: DragStartBehavior.down,
+                  onPanStart: (details) {
+                    final anchor = render.localToGlobal(
+                      render.getOffset(cell) + Offset(0, render.cellSize.height / 2),
+                    );
+                    _selectionDragOffset = anchor - details.globalPosition;
+                  },
+                  onPanUpdate: (details) => _dragSelection(start, details.globalPosition),
+                  onPanEnd: (_) => _selectionDragOffset = null,
+                  onPanCancel: () => _selectionDragOffset = null,
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: Container(
+                      width: 12,
+                      height: 12,
+                      margin: const EdgeInsets.only(top: 3),
+                      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+    ];
+  }
+
+  void _dragSelection(bool start, Offset pointer) {
+    final range = _selection.selection?.normalized;
+    final render = _view.currentState?.renderTerminal;
+    final drag = _selectionDragOffset;
+    if (range == null || render == null || drag == null) return;
+    final local = render.globalToLocal(pointer + drag);
+    final cell = render.getCellOffset(local);
+    final boundary = local.dx - render.getOffset(cell).dx >= render.cellSize.width / 2
+        ? CellOffset(cell.x + 1, cell.y)
+        : cell;
+    if (start ? !boundary.isBefore(range.end) : !boundary.isAfter(range.begin)) return;
+    final begin = start ? boundary : range.begin;
+    final end = start ? range.end : boundary;
+    if (begin == range.begin && end == range.end) return;
+    final buffer = _terminal.buffer;
+    _selection.setSelection(buffer.createAnchorFromOffset(begin), buffer.createAnchorFromOffset(end));
   }
 
   // ── Build ──
@@ -344,7 +432,6 @@ class TerminalScreenState extends ConsumerState<TerminalScreen> {
       hardwareKeyboardOnly: true,
       readOnly: !canType,
       keyboardAppearance: Brightness.dark,
-      onTapUp: (_, _) => _keyboard.currentState?.show(),
       onKeyEvent: _onKeyEvent,
     );
     // The card is already inside the safe area; xterm would pad it again.
@@ -386,15 +473,19 @@ class TerminalScreenState extends ConsumerState<TerminalScreen> {
               Positioned.fill(child: blocked == null ? screen : Center(child: blocked)),
               if (blocked == null)
                 ListenableBuilder(
-                  listenable: _selection,
+                  listenable: Listenable.merge([_selection, _scroll]),
                   builder: (context, _) {
                     final anchor = _selectionBarAnchor();
                     if (anchor == null) return const SizedBox.shrink();
-                    return Positioned.fill(
-                      child: CustomSingleChildLayout(
-                        delegate: _CenteredAt(anchor),
-                        child: _SelectionBar(onCopy: _copy, onPaste: canType ? _paste : null),
-                      ),
+                    return Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        CustomSingleChildLayout(
+                          delegate: _CenteredAt(anchor),
+                          child: _SelectionBar(onCopy: _copy, onPaste: canType ? _paste : null),
+                        ),
+                        ..._selectionHandles(),
+                      ],
                     );
                   },
                 ),
