@@ -44,6 +44,8 @@ jobs:
           flutter pub get --enforce-lockfile
           flutter test test/state/daily_usage_state_test.dart
       - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        with:
+          packages: 'platform-tools'
       - name: Prepare Android SDK
         run: |
           ndk_version=$(python3 -c 'import json; print(json.load(open("runtime/tawcroot/source.json"))["ndkVersion"])')
