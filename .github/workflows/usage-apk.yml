@@ -32,7 +32,13 @@ jobs:
           flutter-version: '3.47.7'
           channel: stable
           cache: true
+      - name: Install fonts required by the Flutter test suite
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk fonts-noto-cjk-extra
       - name: Prepare app and test daily usage
+        env:
+          DSH_TEST_FONT_DIR: /usr/share/fonts/opentype/noto
         working-directory: app
         run: |
           flutter pub get --enforce-lockfile
