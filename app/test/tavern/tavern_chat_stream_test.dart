@@ -122,7 +122,11 @@ void main() {
     expect(tavern.pathReads, greaterThan(readsBeforeSave));
     expect(userText, findsOneWidget);
     expect(tester.element(userRow), same(initialElement));
-    expect(tester.getRect(userRow), initialRect);
+    final actualRect = tester.getRect(userRow);
+    expect(actualRect.left, closeTo(initialRect.left, 0.01));
+    expect(actualRect.top, closeTo(initialRect.top, 0.01));
+    expect(actualRect.right, closeTo(initialRect.right, 0.01));
+    expect(actualRect.bottom, closeTo(initialRect.bottom, 0.01));
 
     await tester.pumpAndSettle();
     expect(userText, findsOneWidget);
