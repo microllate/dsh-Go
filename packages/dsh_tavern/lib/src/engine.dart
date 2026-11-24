@@ -4158,7 +4158,7 @@ class TavernEngine implements Tavern {
       final _PromptHistoryWindow? historyWindow;
       final List<StoredNode> history;
       try {
-        historyWindow = _plainPromptHistory(
+        historyWindow = await _plainPromptHistory(
           this,
           turn,
           data,

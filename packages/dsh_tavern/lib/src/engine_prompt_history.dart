@@ -54,7 +54,7 @@ Future<List<StoredNode>> _readCompletePromptHistory(TavernEngine engine, _Turn t
 // An unchanged suffix can be bounded before assembly. Dynamic configurations
 // keep the original complete history and macro order; no macro is speculated
 // or replayed to decide whether a message will fit.
-_PromptHistoryWindow? _plainPromptHistory(
+Future<_PromptHistoryWindow?> _plainPromptHistory(
   TavernEngine engine,
   _Turn turn,
   Map<String, Object?> data,
@@ -62,7 +62,7 @@ _PromptHistoryWindow? _plainPromptHistory(
   String? leaf, {
   required PromptTokenCounter counter,
   required WorldInfoSettings worldSettings,
-}) {
+}) async {
   final settings = preset.settings;
   if (engine._counter is! EstimatedTokenCounter ||
       (turn.kind != _TurnKind.send && turn.kind != _TurnKind.regenerate) ||
@@ -87,13 +87,24 @@ _PromptHistoryWindow? _plainPromptHistory(
       presetNumber(settings['openai_max_context'], 4095).toInt() -
       presetNumber(settings['openai_max_tokens'], 300).toInt();
   if (budget < 0) return null;
-  final path = engine._store.historyLinksTo(turn.chat.id, leaf);
+  final chatId = turn.chat.id;
+  final version = engine._store.displayVersion(chatId);
+  final slice = Stopwatch()..start();
+  final path = engine._store.historyLinksTo(chatId, leaf);
   final reversed = <StoredNode>[];
   var spent = 0;
   var bodyNodes = 0;
   var cursor = leaf;
   while (cursor != null && spent <= budget) {
-    final page = engine._store.promptHistoryTo(turn.chat.id, cursor, limit: 32);
+    // Leave the UI event loop time between SQLite pages on long prompts.
+    if (slice.elapsedMicroseconds >= 5000) {
+      await Future<void>.delayed(Duration.zero);
+      turn.cancellation.check();
+      _requireOrdinaryOwnership(engine, turn, StoredToolPhase.native);
+      if (!identical(version, engine._store.displayVersion(chatId))) return null;
+      slice.reset();
+    }
+    final page = engine._store.promptHistoryTo(chatId, cursor, limit: 32);
     bodyNodes += page.length;
     for (final node in page.reversed) {
       reversed.add(node);
@@ -118,12 +129,12 @@ _PromptHistoryWindow? _plainPromptHistory(
       ? null
       : nodes.length == path.length
       ? nodes.first
-      : engine._store.promptHistoryTo(turn.chat.id, path.first.nodeId, limit: 1).single;
+      : engine._store.promptHistoryTo(chatId, path.first.nodeId, limit: 1).single;
   if (path.isNotEmpty && nodes.length != path.length) bodyNodes++;
   if (first != null && !_plainPromptText(first.message.text)) return null;
   final identityNode = leaf == null
       ? null
-      : engine._store.promptHistoryTo(turn.chat.id, leaf, limit: 1, includeSource: true).single;
+      : engine._store.promptHistoryTo(chatId, leaf, limit: 1, includeSource: true).single;
   if (identityNode != null) bodyNodes++;
   return _PromptHistoryWindow(nodes, path, first, identityNode, bodyNodes);
 }

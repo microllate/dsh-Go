@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dsh_app/tavern/tavern_preview.dart';
 import 'package:dsh_app/tavern/tavern_provider.dart';
 import 'package:dsh_app/ui/bots/bot_chat_kit.dart';
@@ -19,6 +21,8 @@ class _Counted extends PreviewTavern {
 
   int pieces = 0;
   int pathReads = 0;
+  int sends = 0;
+  Completer<void>? sendGate;
 
   @override
   Future<List<TavernMessage>> path(String chatId, {int limit = 60, String? beforeNodeId}) {
@@ -27,10 +31,17 @@ class _Counted extends PreviewTavern {
   }
 
   @override
-  Stream<TavernEvent> send(String chatId, String text) => super.send(chatId, text).map((event) {
-    if (event is TavernTextDelta) pieces++;
-    return event;
-  });
+  Stream<TavernEvent> send(String chatId, String text) {
+    sends++;
+    final gate = sendGate;
+    final events = gate == null
+        ? super.send(chatId, text)
+        : Stream.fromFuture(gate.future).asyncExpand((_) => super.send(chatId, text));
+    return events.map((event) {
+      if (event is TavernTextDelta) pieces++;
+      return event;
+    });
+  }
 }
 
 Future<void> _open(
@@ -79,6 +90,31 @@ Future<int> _sendCountingRows(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('the user message appears before saving and is replaced by the saved row', (tester) async {
+    final gate = Completer<void>();
+    final tavern = _Counted()..sendGate = gate;
+    await _open(tester, tavern);
+    final input = find.byType(TextField);
+    const text = '外面怎么了？';
+    await tester.enterText(input, text);
+    await tester.pump();
+
+    await tester.tap(find.byIcon(AppIcons.send));
+    expect(tavern.sends, 0);
+    expect(tester.widget<TextField>(input).controller!.text, isEmpty);
+
+    await tester.pump();
+    expect(find.byIcon(AppIcons.stopGenerating), findsOneWidget);
+    expect(tavern.sends, 1);
+    expect(find.text(text), findsOneWidget);
+    expect(find.byKey(const ValueKey('tavern-pending-user')), findsWidgets);
+
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('tavern-pending-user')), findsNothing);
+    expect(find.textContaining(text, findRichText: true), findsOneWidget);
+  });
+
   testWidgets('a reply that grows past the top shades the header, though nothing was scrolled', (tester) async {
     // Short enough that the reply outgrows it; the list stays at its newest end.
     await _open(tester, _Counted(), size: const Size(390, 420));

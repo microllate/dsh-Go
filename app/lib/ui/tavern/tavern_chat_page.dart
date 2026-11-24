@@ -243,7 +243,12 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
   /// the key is missing or refused.
   ({String label, VoidCallback onPressed})? _action;
 
-  bool get _running => _turn != null && !_rejoining;
+  VoidCallback? _cancelPendingSend;
+  TavernMessage? _pendingUser;
+  String? _savedUserId;
+  static const _pendingUserId = 'tavern-pending-user';
+
+  bool get _running => _cancelPendingSend != null || (_turn != null && !_rejoining);
 
   /// Listening for a reply from before this page opened, none seen yet: not
   /// running until one shows.
@@ -368,6 +373,20 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
     setState(() {
       _messages = messages;
       _hasOlder = messages.length >= window;
+      if (_pendingUser case final pending?) {
+        // A path notification can arrive before the engine reports the reply
+        // or group progress. The new user node is then a child of the old tail.
+        final savedId = _savedUserId;
+        if (!_running ||
+            (_cancelPendingSend == null &&
+                messages.any(
+                  (message) =>
+                      message.role == TavernRole.user &&
+                      (savedId == null ? message.parentId == pending.parentId : message.nodeId == savedId),
+                ))) {
+          _clearPendingUser();
+        }
+      }
     });
     unawaited(_readPinned());
   }
@@ -489,6 +508,7 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
           case TavernToolActivity():
             _refreshTools();
           case TavernTurnStarted(:final message):
+            if (_pendingUser != null) _savedUserId = message.parentId;
             setState(() => _streamNode = message.nodeId);
             _queueReload();
           case TavernTextDelta(:final nodeId, :final text):
@@ -536,7 +556,10 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
                 }
             }
           case TavernTurnFailed(:final kind, :final detail, :final partial, :final toolFailureCode):
-            if (partial == null && draft != null && _input.text.isEmpty) _input.text = draft;
+            if (partial == null) {
+              _clearPendingUser();
+              if (draft != null && _input.text.isEmpty) _input.text = draft;
+            }
             if (kind == TavernFailure.cancelled) return _finish();
             final l10n = context.l10n;
             _finish(
@@ -583,7 +606,7 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
     } on Object {
       group = null;
     }
-    if (!mounted || _turn != null) return;
+    if (!mounted || _turn != null || _cancelPendingSend != null) return;
     if (group != null) {
       setState(() => _group = group);
       _runGroup(() => _tavern.resumeGroupTurn(widget.chatId), rejoin: true);
@@ -659,6 +682,7 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
         if (!mounted) return;
         switch (event) {
           case TavernGroupStarted(:final progress) || TavernGroupProgressChanged(:final progress):
+            if (_pendingUser != null && progress.userNodeId != null) _savedUserId = progress.userNodeId;
             setState(() {
               _rejoining = false;
               _groupProgress = progress;
@@ -681,6 +705,10 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
             final l10n = context.l10n;
             switch (reason) {
               case TavernGroupEndReason.completed || TavernGroupEndReason.cancelled:
+                if (reason == TavernGroupEndReason.cancelled && progress?.userNodeId == null && _pendingUser != null) {
+                  _clearPendingUser();
+                  if (draft != null && _input.text.isEmpty) _input.text = draft;
+                }
                 final over = switch (costliest) {
                   final reply? => _overCost(reply),
                   null => null,
@@ -695,7 +723,10 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
               case TavernGroupEndReason.failed:
                 // Your line was not kept: back in the box.
                 final kept = progress?.userNodeId != null;
-                if (!kept && draft != null && _input.text.isEmpty) _input.text = draft;
+                if (!kept) {
+                  _clearPendingUser();
+                  if (draft != null && _input.text.isEmpty) _input.text = draft;
+                }
                 final kind = failure ?? TavernFailure.server;
                 _finish(
                   error: _failureText(kind, detail, code),
@@ -739,8 +770,7 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
     unawaited(HapticFeedback.selectionClick());
     final text = _input.text;
     _input.clear();
-    _countMessage();
-    _runGroup(() => _tavern.sendGroup(widget.chatId, text, speakerCharacterId: characterId), draft: text);
+    _sendDraft(text, speakerCharacterId: characterId);
   }
 
   /// Anonymous usage statistics (lib/usage/usage_stats.dart): one more
@@ -917,13 +947,54 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
     }
     final text = _input.text;
     _input.clear();
-    _countMessage();
-    // A group: the line goes to all of them, who answer in turn.
-    if (_groupChat) {
-      _runGroup(() => _tavern.sendGroup(widget.chatId, text), draft: text);
-      return;
+    _sendDraft(text);
+  }
+
+  void _sendDraft(String text, {String? speakerCharacterId}) {
+    final group = _groupChat || speakerCharacterId != null;
+    void cancel() {
+      setState(() {
+        _cancelPendingSend = null;
+        _clearPendingUser();
+      });
+      if (_input.text.isEmpty) _input.text = text;
     }
-    _run(() => _tavern.send(widget.chatId, text), draft: text);
+
+    setState(() {
+      _cancelPendingSend = cancel;
+      _savedUserId = null;
+      _pendingUser = text.trim().isEmpty
+          ? null
+          : TavernMessage(
+              nodeId: _pendingUserId,
+              parentId: _messages?.lastOrNull?.nodeId,
+              role: TavernRole.user,
+              speaker: context.l10n.tavernYou,
+              text: text,
+              at: DateTime.now(),
+            );
+      _error = null;
+      _action = null;
+    });
+    // Turn admission and prompt preparation share the UI isolate. Submit
+    // once the cleared composer and reply indicator have painted.
+    unawaited(
+      WidgetsBinding.instance.endOfFrame.then((_) {
+        if (!mounted || !identical(_cancelPendingSend, cancel)) return;
+        _cancelPendingSend = null;
+        _countMessage();
+        if (group) {
+          _runGroup(() => _tavern.sendGroup(widget.chatId, text, speakerCharacterId: speakerCharacterId), draft: text);
+        } else {
+          _run(() => _tavern.send(widget.chatId, text), draft: text);
+        }
+      }),
+    );
+  }
+
+  void _clearPendingUser() {
+    _pendingUser = null;
+    _savedUserId = null;
   }
 
   /// /continue, /regen, /imp: as the message menu and 帮我写 do them, on the
@@ -949,7 +1020,13 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
     }
   }
 
-  void _stop() => _tavern.stop(widget.chatId);
+  void _stop() {
+    if (_cancelPendingSend case final cancel?) {
+      cancel();
+    } else {
+      _tavern.stop(widget.chatId);
+    }
+  }
 
   /// One of the director's suggestions, into the box to change and send (or
   /// not); never sent for you.
@@ -1040,12 +1117,7 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
   void _sendQuick(String text) {
     if (_running) return;
     unawaited(HapticFeedback.selectionClick());
-    _countMessage();
-    if (_groupChat) {
-      _runGroup(() => _tavern.sendGroup(widget.chatId, text), draft: text);
-      return;
-    }
-    _run(() => _tavern.send(widget.chatId, text), draft: text);
+    _sendDraft(text);
   }
 
   /// Long-press: the quick reply goes into the box to change first.
@@ -1465,7 +1537,10 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
     final topInset = BotChatHeader.heightOf(context);
     final lastCharacter = messages?.lastWhere((m) => m.role == TavernRole.character, orElse: () => _none).nodeId;
 
-    final shown = messages ?? const <TavernMessage>[];
+    final shown = switch (_pendingUser) {
+      final pending? => [...?messages, pending],
+      null => messages ?? const <TavernMessage>[],
+    };
     final marked = {for (final b in ref.watch(tavernBookmarksProvider(widget.chatId))) b.nodeId};
     final rows = <Widget>[
       for (final (i, m) in shown.indexed) ...[
@@ -1489,7 +1564,8 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
             message: m,
             last: m.nodeId == lastCharacter,
             busy: _running,
-            onMenu: () => unawaited(_menu(m, last: m.nodeId == lastCharacter)),
+            pending: m.nodeId == _pendingUserId,
+            onMenu: m.nodeId == _pendingUserId ? null : () => unawaited(_menu(m, last: m.nodeId == lastCharacter)),
             onSibling: (delta) => unawaited(_sibling(m, delta)),
             novel: novel,
             indent: indent,
@@ -1642,7 +1718,7 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
                     builder: (context, _) => TavernVisualNovelView(
                       pages: [
                         ...tavernPages(
-                          messages ?? const [],
+                          shown,
                           streamNode: _streamNode,
                           streamText: _live.shown,
                           shown: (m) => shownText[m.nodeId] ?? m.text,
@@ -1682,11 +1758,15 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
                         ),
                         null => null,
                       },
-                      onPage: _cue,
+                      onPage: (page) {
+                        if (page.message.nodeId != _pendingUserId) _cue(page);
+                      },
                       onReadingBack: _vnReadingBack,
                       revealRate: revealRate,
                       topInset: topInset,
-                      onMenu: (m) => unawaited(_menu(m, last: m.nodeId == lastCharacter)),
+                      onMenu: (m) {
+                        if (m.nodeId != _pendingUserId) unawaited(_menu(m, last: m.nodeId == lastCharacter));
+                      },
                       footer: (m, lastPage) =>
                           lastPage &&
                               m.role == TavernRole.character &&
@@ -1703,7 +1783,7 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
                 : canvas
                 ? ref.watch(tavernCanvasBuilderProvider)(
                     entries: [
-                      for (final (i, m) in (messages ?? const <TavernMessage>[]).indexed)
+                      for (final (i, m) in shown.indexed)
                         if (!(_running && m.nodeId == _streamNode))
                           TavernCanvasEntry(
                             mesid: i,
@@ -1990,6 +2070,7 @@ class _MessageRow extends StatelessWidget {
     required this.busy,
     required this.onMenu,
     required this.onSibling,
+    this.pending = false,
     this.novel = false,
     this.indent = false,
     this.showUsage = false,
@@ -2022,7 +2103,8 @@ class _MessageRow extends StatelessWidget {
   final bool bookmarked;
   final bool last;
   final bool busy;
-  final VoidCallback onMenu;
+  final bool pending;
+  final VoidCallback? onMenu;
   final ValueChanged<int> onSibling;
 
   /// 小说 layout: every message full width under its speaker's name.
@@ -2086,7 +2168,7 @@ class _MessageRow extends StatelessWidget {
       return GestureDetector(
         onLongPress: onMenu,
         child: _YourLine(
-          child: _Shown(chatId: chatId, message: message),
+          child: pending ? Text(message.text) : _Shown(chatId: chatId, message: message),
         ),
       );
     }
@@ -2162,7 +2244,7 @@ class _MessageRow extends StatelessWidget {
           if (message.reasoning case final reasoning? when reasoning.isNotEmpty) ThinkingPill(reasoning: reasoning),
           Opacity(
             opacity: user ? 0.78 : 1,
-            child: _Shown(chatId: chatId, message: message, indent: indent),
+            child: pending ? Text(message.text) : _Shown(chatId: chatId, message: message, indent: indent),
           ),
           ?_usage(),
           ?_tools(),
