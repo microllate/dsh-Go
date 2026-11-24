@@ -90,12 +90,17 @@ Future<int> _sendCountingRows(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('the user message appears before saving and is replaced by the saved row', (tester) async {
+  testWidgets('the visible user row stays in place when its saved message arrives', (tester) async {
     final gate = Completer<void>();
     final tavern = _Counted()..sendGate = gate;
     await _open(tester, tavern);
     final input = find.byType(TextField);
-    const text = '外面怎么了？';
+    const text = '外面怎么了？\n\n**真的没事？**';
+    final userText = find.textContaining('外面怎么了？', findRichText: true);
+    final userRow = find.ancestor(
+      of: userText,
+      matching: find.byWidgetPredicate((widget) => widget.runtimeType.toString() == '_MessageRow'),
+    );
     await tester.enterText(input, text);
     await tester.pump();
 
@@ -106,13 +111,21 @@ void main() {
     await tester.pump();
     expect(find.byIcon(AppIcons.stopGenerating), findsOneWidget);
     expect(tavern.sends, 1);
-    expect(find.text(text), findsOneWidget);
-    expect(find.byKey(const ValueKey('tavern-pending-user')), findsWidgets);
+    expect(userText, findsOneWidget);
+    final initialElement = tester.element(userRow);
+    final initialRect = tester.getRect(userRow);
+    final readsBeforeSave = tavern.pathReads;
 
     gate.complete();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(tavern.pathReads, greaterThan(readsBeforeSave));
+    expect(userText, findsOneWidget);
+    expect(tester.element(userRow), same(initialElement));
+    expect(tester.getRect(userRow), initialRect);
+
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('tavern-pending-user')), findsNothing);
-    expect(find.textContaining(text, findRichText: true), findsOneWidget);
+    expect(userText, findsOneWidget);
   });
 
   testWidgets('a reply that grows past the top shades the header, though nothing was scrolled', (tester) async {

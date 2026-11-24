@@ -245,8 +245,11 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
 
   VoidCallback? _cancelPendingSend;
   TavernMessage? _pendingUser;
+  Key? _pendingUserRowKey;
   String? _savedUserId;
   static const _pendingUserId = 'tavern-pending-user';
+  final _sentRowKeys = <String, Key>{};
+  static const _streamRowKey = ValueKey('tavern-streaming-reply');
 
   bool get _running => _cancelPendingSend != null || (_turn != null && !_rejoining);
 
@@ -377,15 +380,19 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
         // A path notification can arrive before the engine reports the reply
         // or group progress. The new user node is then a child of the old tail.
         final savedId = _savedUserId;
-        if (!_running ||
-            (_cancelPendingSend == null &&
-                messages.any(
-                  (message) =>
-                      message.role == TavernRole.user &&
-                      (savedId == null ? message.parentId == pending.parentId : message.nodeId == savedId),
-                ))) {
-          _clearPendingUser();
-        }
+        final saved = _cancelPendingSend == null
+            ? messages
+                  .where(
+                    (message) =>
+                        message.role == TavernRole.user &&
+                        (savedId == null ? message.parentId == pending.parentId : message.nodeId == savedId),
+                  )
+                  .firstOrNull
+            : null;
+        final key = _pendingUserRowKey;
+        // Reuse the existing list element when the stored message takes over.
+        if (saved != null && key != null) _sentRowKeys[saved.nodeId] = key;
+        if (saved != null || !_running) _clearPendingUser();
       }
     });
     unawaited(_readPinned());
@@ -525,6 +532,7 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
               _thinkingTick = Timer.periodic(const Duration(seconds: 1), (_) => _thinking.value = _thinking.value! + 1);
             }
           case TavernTurnDone(:final message, :final finishReason):
+            _showStoredReply(message);
             _countTokens(message);
             // Cut short by the reply limit, or by the provider's filter: say
             // so over the composer, with the way on.
@@ -659,6 +667,7 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
             _thinkingTick = Timer.periodic(const Duration(seconds: 1), (_) => _thinking.value = _thinking.value! + 1);
           }
         case TavernTurnDone(:final message):
+          _showStoredReply(message);
           _countTokens(message);
           if (_replyCost(message) case final cost? when cost > most) {
             costliest = message;
@@ -842,6 +851,15 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
   /// again: a turn ended, a tool was taken up, a decision was made.
   void _refreshTools() => ref.invalidate(tavernChatToolTurnsProvider(widget.chatId));
 
+  // The terminal event already contains the saved text. Install it before
+  // removing the streaming row so a stale empty body cannot flash in between.
+  void _showStoredReply(TavernMessage message) {
+    final messages = _messages;
+    final index = messages?.indexWhere((row) => row.nodeId == message.nodeId) ?? -1;
+    if (index < 0) return;
+    _messages = [...messages!]..[index] = message;
+  }
+
   /// 记住 / 不用 on what a reply proposed to remember: as the proposal is
   /// now (its version, its context), under a new decision id, kept before it
   /// is sent (STAGE1-APP-INTEGRATION §5.2).
@@ -973,6 +991,7 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
               text: text,
               at: DateTime.now(),
             );
+      _pendingUserRowKey = _pendingUser == null ? null : UniqueKey();
       _error = null;
       _action = null;
     });
@@ -994,8 +1013,11 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
 
   void _clearPendingUser() {
     _pendingUser = null;
+    _pendingUserRowKey = null;
     _savedUserId = null;
   }
+
+  Key _storedRowKey(String nodeId) => _sentRowKeys[nodeId] ?? ValueKey(nodeId);
 
   /// /continue, /regen, /imp: as the message menu and 帮我写 do them, on the
   /// latest reply.
@@ -1549,7 +1571,7 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
           TavernChapterBreak(key: ValueKey('tavern-chapter-${m.nodeId}'), at: m.at),
         if (m.nodeId == _streamNode)
           _StreamingReply(
-            key: ValueKey('stream-${m.nodeId}'),
+            key: _streamRowKey,
             stream: _stream,
             live: _live,
             thinking: _thinking,
@@ -1560,7 +1582,7 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
         else
           _MessageRow(
             chatId: widget.chatId,
-            key: ValueKey(m.nodeId),
+            key: m.nodeId == _pendingUserId ? _pendingUserRowKey : _storedRowKey(m.nodeId),
             message: m,
             last: m.nodeId == lastCharacter,
             busy: _running,
@@ -1580,7 +1602,7 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
       ],
       if (_running && (_streamNode == null || !(messages?.any((m) => m.nodeId == _streamNode) ?? false)))
         _StreamingReply(
-          key: const ValueKey('stream-pending'),
+          key: _streamRowKey,
           stream: _stream,
           live: _live,
           thinking: _thinking,
@@ -1840,7 +1862,7 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
                               key: row.key,
                               padding: const EdgeInsets.symmetric(vertical: 6),
                               // The message gone to, marked for a moment.
-                              child: _jumpTarget != null && row.key == ValueKey<String>(_jumpTarget!)
+                              child: _jumpTarget != null && row.key == _storedRowKey(_jumpTarget!)
                                   ? _JumpMark(key: _jumpKey, child: row)
                                   : row,
                             ),
@@ -2168,7 +2190,7 @@ class _MessageRow extends StatelessWidget {
       return GestureDetector(
         onLongPress: onMenu,
         child: _YourLine(
-          child: pending ? Text(message.text) : _Shown(chatId: chatId, message: message),
+          child: _Shown(chatId: chatId, message: message, pending: pending),
         ),
       );
     }
@@ -2244,7 +2266,7 @@ class _MessageRow extends StatelessWidget {
           if (message.reasoning case final reasoning? when reasoning.isNotEmpty) ThinkingPill(reasoning: reasoning),
           Opacity(
             opacity: user ? 0.78 : 1,
-            child: pending ? Text(message.text) : _Shown(chatId: chatId, message: message, indent: indent),
+            child: _Shown(chatId: chatId, message: message, indent: indent, pending: pending),
           ),
           ?_usage(),
           ?_tools(),
@@ -2623,22 +2645,24 @@ Widget? _toolStrips(
 
 /// [message]'s text as [tavernShownTextProvider] shows it.
 class _Shown extends ConsumerWidget {
-  const _Shown({required this.chatId, required this.message, this.indent = false});
+  const _Shown({required this.chatId, required this.message, this.indent = false, this.pending = false});
 
   final String chatId;
   final TavernMessage message;
 
   /// 小说's paragraph indent.
   final bool indent;
+  final bool pending;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    Widget text(String markdown) =>
+        MarkdownBody(text: indent ? tavernIndentParagraphs(markdown) : markdown, selectable: false);
+    if (pending) return text(tavernStripMarkers(message.text));
     // Expression markers ([表情:x]) pick her picture; they are not words.
     final shown = tavernStripMarkers(
       ref.watch(tavernShownTextProvider((chatId, message.nodeId, message.text))).value ?? message.text,
     );
-    Widget text(String markdown) =>
-        MarkdownBody(text: indent ? tavernIndentParagraphs(markdown) : markdown, selectable: false);
     // HTML in it: those parts in islands of their own (酒馆设置 › 显示);
     // component tags (<dsh-letter>…) as cards, either way.
     final parts = tavernParts(
