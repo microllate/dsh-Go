@@ -268,7 +268,7 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
   void initState() {
     super.initState();
     _readAloud; // Bound now: dispose can't read providers.
-    _changes = _tavern.pathChanges(widget.chatId).listen((_) => unawaited(_reload()));
+    _changes = _tavern.pathChanges(widget.chatId).listen((_) => _queueReload());
     _director = _tavern.watchDirector(widget.chatId).listen(
       (view) {
         final run = view.latestSuccess;
@@ -346,11 +346,25 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
   /// A full window came back: there may be older ones.
   bool _hasOlder = false;
   bool _loadingOlder = false;
+  bool _reloadQueued = false;
+  int _reloadRevision = 0;
+
+  // A committed path change and its turn event can arrive together. Read the
+  // transcript once after both notifications have been delivered.
+  void _queueReload() {
+    if (_reloadQueued) return;
+    _reloadQueued = true;
+    Timer.run(() {
+      _reloadQueued = false;
+      if (mounted) unawaited(_reload());
+    });
+  }
 
   Future<void> _reload() async {
+    final revision = ++_reloadRevision;
     final window = _window;
     final messages = await _tavern.path(widget.chatId, limit: window);
-    if (!mounted) return;
+    if (!mounted || revision != _reloadRevision) return;
     setState(() {
       _messages = messages;
       _hasOlder = messages.length >= window;
@@ -476,7 +490,7 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
             _refreshTools();
           case TavernTurnStarted(:final message):
             setState(() => _streamNode = message.nodeId);
-            unawaited(_reload());
+            _queueReload();
           case TavernTextDelta(:final nodeId, :final text):
             _adopt(nodeId);
             _stream.value = (text: _stream.value.text + text, reasoning: _stream.value.reasoning);
@@ -608,7 +622,7 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
           _stopThinking();
           _thinking.value = null;
           setState(() => _streamNode = message.nodeId);
-          unawaited(_reload());
+          _queueReload();
         case TavernTextDelta(:final nodeId, :final text):
           _adopt(nodeId);
           _stream.value = (text: _stream.value.text + text, reasoning: _stream.value.reasoning);
@@ -632,7 +646,7 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
           _live.reset();
           _stopThinking();
           setState(() => _streamNode = null);
-          unawaited(_reload());
+          _queueReload();
         case TavernToolActivity():
           _refreshTools();
         default:
@@ -853,7 +867,7 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
     _stream.value = _nothing;
     _live.reset();
     _stopThinking();
-    unawaited(_reload());
+    _queueReload();
   }
 
   /// What went wrong, as the player reads it. A tool's failure says which
@@ -1011,7 +1025,7 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
       messenger.showBriefNotice(l10n.tavernSendFailed);
       return;
     }
-    unawaited(_reload());
+    _queueReload();
   }
 
   /// A quick reply sends as it is; on failure it waits in the box.

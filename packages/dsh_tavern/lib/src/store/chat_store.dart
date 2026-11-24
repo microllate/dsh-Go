@@ -1298,7 +1298,12 @@ ORDER BY n.seq
       }
       lastId = before['parent_id'] as String?;
     }
-    return [for (final row in _ancestorRows(chatId, lastId, limit: limit)) _message(row)];
+    // The transcript displays messages and usage, never their inspection or
+    // import documents. Those can contain an entire model request per reply.
+    return [
+      for (final row in _ancestorRows(chatId, lastId, limit: limit, columns: '$_messageColumns, $_siblingColumns'))
+        _message(row),
+    ];
   }
 
   /// One recursive statement returns only grouped counters and path shape.
@@ -2614,12 +2619,15 @@ ORDER BY n.seq
 
   // Explicit projections read each potentially long body only once. JSON
   // containers and host-generated identities do not need a decoding guard.
-  static const _nodeColumns = '''
-    n.seq, n.id, n.chat_id, n.parent_id, n.selected_child_id, n.depth, n.role,
+  static const _messageColumns = '''
+    n.id, n.parent_id, n.role,
     char(1) || n.speaker AS speaker, char(1) || n.text AS text,
-    char(1) || n.reasoning AS reasoning, n.at, n.hidden, n.usage, n.extra, n.original,
+    char(1) || n.reasoning AS reasoning, n.at, n.hidden, n.usage,
     char(1) || n.stream_text AS stream_text, char(1) || n.stream_reasoning AS stream_reasoning,
-    n.deleted_by, n.reported_usage, char(1) || n.speaker_character_id AS speaker_character_id''';
+    n.reported_usage, char(1) || n.speaker_character_id AS speaker_character_id''';
+
+  static const _nodeColumns = '''
+    $_messageColumns, n.seq, n.chat_id, n.selected_child_id, n.depth, n.extra, n.original, n.deleted_by''';
 
   static const _displayVisible =
       "(n.hidden = 0 AND n.role != 'system' AND "

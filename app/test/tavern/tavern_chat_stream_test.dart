@@ -18,6 +18,13 @@ class _Counted extends PreviewTavern {
   _Counted() : super(tick: const Duration(milliseconds: 20));
 
   int pieces = 0;
+  int pathReads = 0;
+
+  @override
+  Future<List<TavernMessage>> path(String chatId, {int limit = 60, String? beforeNodeId}) {
+    pathReads++;
+    return super.path(chatId, limit: limit, beforeNodeId: beforeNodeId);
+  }
 
   @override
   Stream<TavernEvent> send(String chatId, String text) => super.send(chatId, text).map((event) {
@@ -93,6 +100,18 @@ void main() {
     // The rows rebuild when the turn starts, settles and ends, not once per
     // piece (two rows on screen, a rebuild each piece, would be twice the pieces).
     expect(rows, lessThan(tavern.pieces));
+  });
+
+  testWidgets('turn completion and its path notification share one transcript read', (tester) async {
+    final tavern = _Counted();
+    await _open(tester, tavern);
+    tavern.pathReads = 0;
+
+    await _sendCountingRows(tester);
+
+    expect(find.textContaining('地下室'), findsOneWidget);
+    // One read at reply start and one when the completed reply is committed.
+    expect(tavern.pathReads, 2);
   });
 
   testWidgets('in 视觉小说 the page being written still follows the reply', (tester) async {

@@ -45,12 +45,12 @@ jobs:
         working-directory: app
         run: |
           flutter pub get --enforce-lockfile
-          flutter test test/state/daily_usage_state_test.dart test/chat/message_selection_test.dart test/chat/message_actions_test.dart test/chat/message_flow_test.dart test/chat/fork_toast_test.dart test/terminal/terminal_input_configuration_test.dart test/terminal/terminal_page_test.dart
+          flutter test test/state/daily_usage_state_test.dart test/chat/message_selection_test.dart test/chat/message_actions_test.dart test/chat/message_flow_test.dart test/chat/fork_toast_test.dart test/terminal/terminal_input_configuration_test.dart test/terminal/terminal_page_test.dart test/tavern/tavern_chat_stream_test.dart
       - name: Test Tavern streaming and request usage
         working-directory: packages/dsh_tavern
         run: |
           dart pub get
-          dart test test/t23_stream_store_test.dart test/model_client_test.dart
+          dart test test/t23_stream_store_test.dart test/model_client_test.dart test/prompt_history_window_test.dart
       - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
         with:
           packages: 'platform-tools'
