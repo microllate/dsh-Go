@@ -16,6 +16,7 @@ import '../../runtime/runtime_bridge.dart';
 import '../../runtime/runtime_state.dart';
 import '../../runtime/local_footprint.dart';
 import '../../state/bots_state.dart';
+import '../../state/chat_error_text.dart';
 import '../../state/connection_state.dart';
 import '../../state/engine_control.dart';
 import '../../state/hosts_state.dart';
@@ -28,6 +29,7 @@ import '../../state/workspaces_state.dart';
 import '../bots/bots_page.dart' show BotsPage, UnreadBadge;
 import '../chat/media/media_format.dart' show chatTitleShown;
 import '../common/app_sheet.dart';
+import '../common/brief_notice.dart';
 import '../common/empty_view.dart';
 import '../common/pressable.dart';
 import '../common/smooth_size.dart';
@@ -44,7 +46,9 @@ import '../share/share_entry.dart';
 import '../theme/app_icons.dart';
 import '../theme/theme.dart';
 import '../web/mode_home.dart';
+import '../workspace/directory_picker.dart';
 import '../workspace/text_prompt.dart';
+import '../workspace/workspace_format.dart' show workspaceErrorText;
 import '../workspace/workspace_switcher.dart';
 import '../workspace/workspaces_page.dart';
 import 'adaptive/adaptive_layout.dart' show WindowClass;
@@ -546,6 +550,7 @@ class _SessionList extends ConsumerWidget {
     SessionDeletionOwner? deletionOwner,
   ) async {
     final title = sessionTitle(s);
+    final connection = ref.read(activeConnectionProvider).asData?.value;
     final workspaces = ref.read(workspacesProvider);
     final pinned = workspaces.pinnedSessionIds.contains(s.sessionId);
     final inFolder = ref.read(drawerViewProvider).folderOf.containsKey(s.sessionId);
@@ -580,6 +585,13 @@ class _SessionList extends ConsumerWidget {
                       title: Text(inFolder ? context.l10n.shellMoveToOtherFolder : context.l10n.shellMoveToFolder),
                       onTap: () => Navigator.pop(sheet, 'folder'),
                     ),
+                    if (connection?.isLocal == true && !s.isSubagent && !s.running && !s.blank)
+                      ListTile(
+                        leading: const Icon(AppIcons.workspace),
+                        title: Text(context.l10n.shellContinueInWorkspace),
+                        subtitle: Text(context.l10n.chatBranchHint),
+                        onTap: () => Navigator.pop(sheet, 'continueInWorkspace'),
+                      ),
                     ListTile(
                       leading: const Icon(AppIcons.share),
                       title: Text(context.l10n.commonShare),
@@ -628,6 +640,8 @@ class _SessionList extends ConsumerWidget {
         await shareConversation(context, s.sessionId);
       case 'folder':
         await moveToFolderFlow(context, ref, [s.sessionId]);
+      case 'continueInWorkspace':
+        if (connection != null) await _continueInWorkspace(context, ref, s, connection);
       case 'select':
         ref.read(drawerSelectionProvider.notifier).start(s.sessionId);
       case 'rename':
@@ -648,6 +662,62 @@ class _SessionList extends ConsumerWidget {
             s.sessionId,
           ], s.running ? appL10n.shellChatStoppedArchived(title) : appL10n.shellChatArchived(title)),
         );
+    }
+  }
+
+  Future<void> _continueInWorkspace(
+    BuildContext context,
+    WidgetRef ref,
+    SessionSummary source,
+    HostConnection connection,
+  ) async {
+    bool isCurrent() => context.mounted && identical(ref.read(activeConnectionProvider).asData?.value, connection);
+
+    if (!isCurrent()) return;
+    final l10n = context.l10n;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final path = await showDirectoryPicker(
+      context,
+      title: l10n.shellContinueInWorkspace,
+      confirmLabel: l10n.commonContinue,
+    );
+    if (path == null || path == source.cwd || !isCurrent()) return;
+
+    final Workspace workspace;
+    try {
+      workspace = await ref.read(workspacesProvider.notifier).add(path);
+    } catch (error) {
+      if (isCurrent()) {
+        messenger?.showSnackBar(
+          SnackBar(content: Text(workspaceErrorText(error, fallback: l10n.remoteWorkspaceErrAdd))),
+        );
+      }
+      return;
+    }
+    if (!isCurrent() || workspace.path == source.cwd) return;
+
+    try {
+      final fork = await connection.client.forkAt(
+        source.sessionId,
+        null,
+        workspaceId: workspace.workspaceId,
+        sourceTitle: source.title,
+      );
+      if (!isCurrent()) return;
+
+      unawaited(ref.read(workspacePrefsProvider.notifier).select(workspace.workspaceId));
+      ref.read(currentSessionProvider.notifier).select(fork.sessionId);
+      unawaited(ref.read(sessionsProvider.notifier).refresh());
+      if (fork.leftQueued > 0) {
+        messenger?.showBriefNotice(l10n.chatForkQueuedLeft(l10n.shellContinueInWorkspace, fork.leftQueued));
+      }
+      onClose();
+    } catch (error) {
+      if (isCurrent()) {
+        messenger?.showSnackBar(
+          SnackBar(content: Text(chatErrorText(error, action: l10n.shellContinueInWorkspaceFailed))),
+        );
+      }
     }
   }
 

@@ -124,8 +124,8 @@ class ForkOutcome {
 }
 
 extension MessageActions on DshClient {
-  /// `session/fork` through event [atSeq] (inclusive), tidied up like a branch
-  /// the person made by hand:
+  /// `session/fork` through event [atSeq] (inclusive), or the latest completed
+  /// turn if null. [workspaceId] optionally sets the local fork's workspace.
   /// * prompts the fork inherited from the source inbox (sent while the cut
   ///   was still open, so they belong *after* it) are dropped with
   ///   `session/updateQueue`; otherwise the fork's next turn would pick them up
@@ -137,8 +137,8 @@ extension MessageActions on DshClient {
   /// Throws [DshRemoteException] when the fork itself fails
   /// (`session/fork-unavailable` for a seq the source does not have). The
   /// clean-up steps never throw: the fork exists by then.
-  Future<ForkOutcome> forkAt(String sessionId, int atSeq, {String? sourceTitle}) async {
-    final child = await forkSession(sessionId, atSeq: atSeq);
+  Future<ForkOutcome> forkAt(String sessionId, int? atSeq, {String? sourceTitle, String? workspaceId}) async {
+    final child = await forkSession(sessionId, atSeq: atSeq, workspaceId: workspaceId);
     SessionProjections? projections;
     try {
       projections = await this.projections(child);

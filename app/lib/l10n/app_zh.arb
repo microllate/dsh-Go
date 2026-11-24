@@ -10298,6 +10298,8 @@
   "shellContentSearchFailed": "内容搜索失败，仅显示标题匹配",
   "shellContentSearchLimit": "内容匹配仅列出最相关的 20 个对话",
   "shellMoveToOtherFolder": "移到其他文件夹",
+  "shellContinueInWorkspace": "在其他工作区继续",
+  "shellContinueInWorkspaceFailed": "没能在其他工作区继续",
   "shellArchiveStopsTurn": "进行中的一轮会停止",
   "shellRenameFailed": "没能重命名，稍后再试",
   "shellChatStoppedArchived": "已停止并归档「{title}」",

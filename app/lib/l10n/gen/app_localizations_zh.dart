@@ -16932,6 +16932,12 @@ class L10nZh extends L10n {
   String get shellMoveToOtherFolder => '移到其他文件夹';
 
   @override
+  String get shellContinueInWorkspace => '在其他工作区继续';
+
+  @override
+  String get shellContinueInWorkspaceFailed => '没能在其他工作区继续';
+
+  @override
   String get shellArchiveStopsTurn => '进行中的一轮会停止';
 
   @override

@@ -30998,6 +30998,18 @@ abstract class L10n {
   /// **'移到其他文件夹'**
   String get shellMoveToOtherFolder;
 
+  /// No description provided for @shellContinueInWorkspace.
+  ///
+  /// In zh, this message translates to:
+  /// **'在其他工作区继续'**
+  String get shellContinueInWorkspace;
+
+  /// No description provided for @shellContinueInWorkspaceFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'没能在其他工作区继续'**
+  String get shellContinueInWorkspaceFailed;
+
   /// No description provided for @shellArchiveStopsTurn.
   ///
   /// In zh, this message translates to:

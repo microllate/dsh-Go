@@ -5151,6 +5151,8 @@
   "shellContentSearchFailed": "Couldn’t search content. Showing title matches only.",
   "shellContentSearchLimit": "Content search shows the 20 most relevant chats",
   "shellMoveToOtherFolder": "Move to another folder",
+  "shellContinueInWorkspace": "Continue in another workspace",
+  "shellContinueInWorkspaceFailed": "Couldn’t continue in another workspace",
   "shellArchiveStopsTurn": "The current turn will stop",
   "shellRenameFailed": "Couldn’t rename. Try again later.",
   "shellChatStoppedArchived": "Stopped and archived “{title}”",

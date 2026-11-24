@@ -1,0 +1,45 @@
+--- a/node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js
+@@ -786,10 +786,14 @@
+ 			const seed = buildForkSeed(source.events, boundary);
+ 			let workspace;
+ 			try {
+-				workspace = await this.forkWorkspace(source.header);
++				workspace = request.workspaceId === void 0
++					? await this.forkWorkspace(source.header)
++					: this.ctx.workspaceRegistry.get(request.workspaceId);
+ 			} catch (error) {
+ 				throw new RemoteError("gateway/internal", `failed to resolve fork workspace for session "${request.sessionId}": ${String(error)}`, {});
+ 			}
++			if (request.workspaceId !== void 0 && workspace === void 0) throw new RemoteError("workspace/not-found", `workspace "${request.workspaceId}" not found`, { workspaceId: request.workspaceId });
++			const cwd = request.workspaceId === void 0 ? source.header.cwd : workspace.path;
+ 			const childId = brandString(`session-${randomUUID()}`);
+ 			const composition = await this.agents.composeAgent(this.agents.presetForObservation(source));
+ 			try {
+@@ -799,7 +803,7 @@
+ 					seed,
+ 					inheritedEventCount: SessionLogOffset(boundary + 1),
+ 					meta: {
+-						...source.header.cwd === void 0 ? {} : { cwd: source.header.cwd },
++						...cwd === void 0 ? {} : { cwd },
+ 						isSeeded: true,
+ 						...composition.agentPreset === void 0 ? {} : { agentPreset: composition.agentPreset }
+ 					},
+--- a/node_modules/@deepseek-ai/dsh-api-session-controller/lib/typert.host.js
++++ b/node_modules/@deepseek-ai/dsh-api-session-controller/lib/typert.host.js
+@@ -666,6 +666,7 @@
+   'sessionId': z.string().readonly(),
+   'atSeq': z.number().readonly().optional().describe('Exact inclusive source event seq; omission selects the latest completed-turn prefix.'),
+   'allowMigration': z.boolean().readonly().optional().describe('False asks the Host to check for required migration before forking. Defaults to true.'),
++  'workspaceId': z.string().min(1).readonly().optional().describe('Workspace whose directory becomes the fork working directory.'),
+ }))
+ let _deepseek_ai_dsh_api_session_controller_session_fork_result$schema$value
+ const _deepseek_ai_dsh_api_session_controller_session_fork_result$schema = () => (_deepseek_ai_dsh_api_session_controller_session_fork_result$schema$value ??= z.object({
+@@ -1704,6 +1705,7 @@
+   'sessionId': z.string().readonly(),
+   'atSeq': z.number().readonly().optional().describe('Exact inclusive source event seq; omission selects the latest completed-turn prefix.'),
+   'allowMigration': z.boolean().readonly().optional().describe('False asks the Host to check for required migration before forking. Defaults to true.'),
++  'workspaceId': z.string().min(1).readonly().optional().describe('Workspace whose directory becomes the fork working directory.'),
+ }))
+ let _deepseek_ai_dsh_api_session_controller_session_list_parameter_0_strict$schema$value
+ const _deepseek_ai_dsh_api_session_controller_session_list_parameter_0_strict$schema = () => (_deepseek_ai_dsh_api_session_controller_session_list_parameter_0_strict$schema$value ??= z.strictObject({

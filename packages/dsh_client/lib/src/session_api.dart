@@ -382,10 +382,11 @@ class DshClient {
   }
 
   /// `session/fork`; omit [atSeq] to fork at the latest completed turn.
-  Future<String> forkSession(String sessionId, {int? atSeq}) async {
+  /// [workspaceId] overrides the inherited directory on DSH Go's local Host.
+  Future<String> forkSession(String sessionId, {int? atSeq, String? workspaceId}) async {
     final value = asMapOrEmpty(
       await rpc.call('session/fork', {
-        'request': {'sessionId': sessionId, 'atSeq': ?atSeq},
+        'request': {'sessionId': sessionId, 'atSeq': ?atSeq, 'workspaceId': ?workspaceId},
       }),
     );
     return asString(value['sessionId']) ?? '';

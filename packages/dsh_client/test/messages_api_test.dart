@@ -256,6 +256,13 @@ void main() {
       expect(carrier.endpoints, ['session/fork', 'session/projections']);
     });
 
+    test('continues the latest completed turn in the requested workspace', () async {
+      childProjections();
+      final outcome = await client.forkAt('src', null, workspaceId: 'target');
+      expect(outcome.sessionId, 'child');
+      expect(carrier.calls.first.$2, {'sessionId': 'src', 'workspaceId': 'target'});
+    });
+
     test('clean-up failures are reported, not thrown', () async {
       childProjections(title: 'T', queued: ['q1', 'gone']);
       carrier.handlers['session/updateQueue'] = (request) => RpcError(

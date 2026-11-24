@@ -318,6 +318,18 @@
         }
       }
     },
+    "session-fork-workspace.diff": {
+      "0.2.2-rc.1": {
+        "node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js": {
+          "after": "1d4982313dad3e946064925dd0cb62e7b3c37ec2cb37124824cdb82bd45432e5",
+          "before": "5e14c333b6e401448f17205b5afc4abfcd52b8ed706ff9253a43215a061c73cd"
+        },
+        "node_modules/@deepseek-ai/dsh-api-session-controller/lib/typert.host.js": {
+          "after": "df3f91f4641bcc39b8976f240e7851fdc74b9e32aea56202e5cf7293ce91ebe8",
+          "before": "f379a3a521f34078b9e540025ceeb4ab8727ef0116e8f36f6f031e6d47478aed"
+        }
+      }
+    },
     "session-format-error.diff": {
       "0.2.2-rc.1": {
         "node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js": {

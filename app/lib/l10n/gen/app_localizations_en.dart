@@ -17855,6 +17855,12 @@ class L10nEn extends L10n {
   String get shellMoveToOtherFolder => 'Move to another folder';
 
   @override
+  String get shellContinueInWorkspace => 'Continue in another workspace';
+
+  @override
+  String get shellContinueInWorkspaceFailed => 'Couldn’t continue in another workspace';
+
+  @override
   String get shellArchiveStopsTurn => 'The current turn will stop';
 
   @override
