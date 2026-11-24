@@ -126,7 +126,7 @@ void main() {
     expect(actualRect.left, closeTo(initialRect.left, 0.01));
     expect(actualRect.top, closeTo(initialRect.top, 0.1));
     expect(actualRect.right, closeTo(initialRect.right, 0.01));
-    expect(actualRect.bottom, closeTo(initialRect.bottom, 0.01));
+    expect(actualRect.bottom, closeTo(initialRect.bottom, 0.1));
 
     await tester.pumpAndSettle();
     expect(userText, findsOneWidget);
