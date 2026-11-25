@@ -127,7 +127,7 @@ void main() {
     ]));
     await TavernModelClient(
       clientFactory: () => client,
-      onRequestUsage: (endpoint, usage) => accounted.add((endpoint, usage)),
+      onRequestUsage: (endpoint, usage, _) => accounted.add((endpoint, usage)),
     ).generate(config: config(), body: const {}, cancellation: ModelCancellation()).drain<void>();
     final (endpoint, usage) = accounted.single;
     expect(endpoint.host, 'api.deepseek.com');
