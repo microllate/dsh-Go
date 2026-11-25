@@ -65,13 +65,14 @@ class DailyUsageController extends AsyncNotifier<List<DailyUsage>> {
       if (connection?.isLocal != true) return;
       var offset = prefs.getInt(_requestOffset) ?? 0;
       while (ref.mounted) {
-        final response = await connection!.client.connection.getBounded(
+        final response = await connection!.client.connection.get(
           '/dsh-go/v1/request-usage',
           query: {'offset': '$offset'},
-          maxBytes: 128 * 1024,
         );
         if (response.statusCode == 404) return;
-        if (response.statusCode != 200) throw StateError('Unable to read model request usage');
+        if (response.statusCode != 200) {
+          throw DshHttpException(response.statusCode, 'Unable to read model request usage');
+        }
         final page = jsonDecode(response.text);
         if (page case {'offset': final int next, 'records': final List<Object?> records}) {
           if (next < offset) {
@@ -117,7 +118,7 @@ class DailyUsageController extends AsyncNotifier<List<DailyUsage>> {
           throw StateError('Invalid model request usage response');
         }
       }
-    });
+    }, preserveOnError: true);
   }
 
   Future<void> deleteDay(String day) => _enqueue((prefs) async {
@@ -240,16 +241,16 @@ class DailyUsageController extends AsyncNotifier<List<DailyUsage>> {
     }
   }
 
-  Future<void> _enqueue(Future<void> Function(SharedPreferences) action) {
+  Future<void> _enqueue(Future<void> Function(SharedPreferences) action, {bool preserveOnError = false}) {
     final write = _writes.then((_) async {
       final prefs = await SharedPreferences.getInstance();
       await action(prefs);
       if (ref.mounted) state = AsyncData(_read(prefs));
     });
     _writes = write.catchError((Object error, StackTrace stack) {
-      if (ref.mounted) state = AsyncError(error, stack);
+      if (ref.mounted && !preserveOnError) state = AsyncError(error, stack);
     });
-    return _writes;
+    return preserveOnError ? write : _writes;
   }
 
   static Map<String, dynamic> _entries(String? raw) {

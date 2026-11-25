@@ -76,6 +76,16 @@ const until = async (predicate, label) => {
   }
 };
 
+test('usage journal probe is authenticated and rejects invalid offsets', async t => {
+  const request = await fixture(t);
+  const allowed = await request('/dsh-go/v1/request-usage?probe=1');
+  assert.equal(allowed.status, 200);
+  assert.deepEqual(allowed.body, {});
+  assert.equal((await request('/dsh-go/v1/request-usage?offset=-1')).status, 400);
+  const rejected = await fixture(t, { rejection: 401 });
+  assert.equal((await rejected('/dsh-go/v1/request-usage?probe=1')).status, 401);
+});
+
 for (const route of ['occupancy', 'plugin-config']) for (const timing of ['before dispatch', 'while reading']) {
   test(`shared body ${route} interrupted ${timing} settles and permits retry`, async t => {
     const schema = Object.assign(value => value, {toJSON: () => ({uid: 1,

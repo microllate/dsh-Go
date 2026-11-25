@@ -7108,6 +7108,9 @@ class L10nEn extends L10n {
   String get settingsDailyUsageDelete => 'Delete daily usage';
 
   @override
+  String get settingsDailyUsageSyncFailed => 'Could not sync the latest usage. Showing saved records.';
+
+  @override
   String settingsDailyUsageDeleteDetail(String date) {
     return 'Delete local usage records for $date? Your DeepSeek bill stays the same.';
   }

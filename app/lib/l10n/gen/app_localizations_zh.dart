@@ -6740,6 +6740,9 @@ class L10nZh extends L10n {
   String get settingsDailyUsageDelete => '删除当天用量';
 
   @override
+  String get settingsDailyUsageSyncFailed => '最新用量同步失败，以下为已保存的记录';
+
+  @override
   String settingsDailyUsageDeleteDetail(String date) {
     return '删除 $date 的本机用量记录？DeepSeek 平台账单不受影响。';
   }

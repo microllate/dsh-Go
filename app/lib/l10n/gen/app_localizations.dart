@@ -12644,6 +12644,12 @@ abstract class L10n {
   /// **'删除当天用量'**
   String get settingsDailyUsageDelete;
 
+  /// No description provided for @settingsDailyUsageSyncFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'最新用量同步失败，以下为已保存的记录'**
+  String get settingsDailyUsageSyncFailed;
+
   /// No description provided for @settingsDailyUsageDeleteDetail.
   ///
   /// In zh, this message translates to:

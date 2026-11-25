@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dsh_client/dsh_client.dart' show DshHttpException;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -21,10 +22,34 @@ class DailyUsagePage extends ConsumerStatefulWidget {
 }
 
 class _DailyUsagePageState extends ConsumerState<DailyUsagePage> {
+  bool _syncing = false;
+  String? _syncError;
+
   @override
   void initState() {
     super.initState();
-    unawaited(ref.read(dailyUsageProvider.notifier).syncEngine());
+    unawaited(_refresh());
+  }
+
+  Future<void> _refresh() async {
+    if (_syncing) return;
+    setState(() => _syncing = true);
+    String? failure;
+    try {
+      await ref.read(dailyUsageProvider.notifier).syncEngine();
+    } on Object catch (error) {
+      failure = switch (error) {
+        DshHttpException(:final statusCode) => 'HTTP $statusCode',
+        _ => error.runtimeType.toString(),
+      };
+      debugPrint('Daily usage sync failed: $failure');
+    }
+    if (mounted) {
+      setState(() {
+        _syncing = false;
+        _syncError = failure;
+      });
+    }
   }
 
   Future<void> _deleteDay(String day, String label) async {
@@ -47,7 +72,7 @@ class _DailyUsagePageState extends ConsumerState<DailyUsagePage> {
   Widget build(BuildContext context) {
     ref.listen(activeConnectionProvider, (previous, next) {
       if (next.value?.isLocal == true && !identical(previous?.value, next.value)) {
-        unawaited(ref.read(dailyUsageProvider.notifier).syncEngine());
+        unawaited(_refresh());
       }
     });
     final l10n = context.l10n;
@@ -63,12 +88,21 @@ class _DailyUsagePageState extends ConsumerState<DailyUsagePage> {
           ListTile(
             title: Text(l10n.commonFailed),
             trailing: TextButton(
-              onPressed: () => unawaited(ref.read(dailyUsageProvider.notifier).syncEngine()),
+              onPressed: _syncing ? null : () => unawaited(_refresh()),
               child: Text(l10n.commonRetry),
             ),
           ),
         ],
         data: (days) => [
+          if (_syncError case final error?)
+            ListTile(
+              title: Text(l10n.settingsDailyUsageSyncFailed),
+              subtitle: Text(error),
+              trailing: TextButton(
+                onPressed: _syncing ? null : () => unawaited(_refresh()),
+                child: Text(l10n.commonRetry),
+              ),
+            ),
           if (days.isEmpty) ListTile(title: Text(l10n.plugViewEmpty)),
           for (final day in days)
             SettingsSection(

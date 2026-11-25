@@ -276,6 +276,7 @@
   "engineCaptureNeedsPhoneFiles": "Enable access to phone files first.",
   "engineCaptureRequestFailed": "Could not read capture status or save the file. Check the local engine and phone file access.",
   "settingsDailyUsageDelete": "Delete daily usage",
+  "settingsDailyUsageSyncFailed": "Could not sync the latest usage. Showing saved records.",
   "settingsDailyUsageDeleteDetail": "Delete local usage records for {date}? Your DeepSeek bill stays the same.",
   "@settingsDailyUsageDeleteDetail": {
     "placeholders": {
