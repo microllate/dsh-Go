@@ -1,0 +1,55 @@
+--- a/node_modules/@deepseek-ai/dsh-llm-deepseek/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-llm-deepseek/lib/index.js
+@@ -1938,7 +1938,7 @@
+ * @param model - requested model id stored in durable replay state.
+ * @returns blocks, one final usage value, and exactly one terminal finish.
+ */
+-async function* translate(events, model) {
++async function* translate(events, model, onUsage) {
+ 	const blocks = /* @__PURE__ */ new Map();
+ 	const usage = {
+ 		inputTokens: 0,
+@@ -1950,6 +1950,7 @@
+ 		if (event.type === "message_start") {
+ 			if (started) return malformed("duplicate message_start");
+ 			updateUsage(usage, object(event.message).usage);
++			onUsage?.(usage);
+ 			started = true;
+ 			continue;
+ 		}
+@@ -2002,7 +2003,10 @@
+ 		} else if (event.type === "message_delta") {
+ 			const delta = object(event.delta);
+ 			if (delta.stop_reason != null) reason = stopReason(delta.stop_reason);
+-			if (event.usage !== void 0) updateUsage(usage, event.usage);
++			if (event.usage !== void 0) {
++				updateUsage(usage, event.usage);
++				onUsage?.(usage);
++			}
+ 		} else {
+ 			if (reason === void 0 || [...blocks.values()].some((block) => !block.closed)) return malformed("message_stop without settled blocks and stop reason");
+ 			if (blocks.size === 0 && reason.kind === "stop") throw new LlmError("DeepSeek Messages returned no content", "EMPTY_RESPONSE");
+@@ -2235,6 +2239,7 @@
+ 				signal.throwIfAborted();
+ 				dshGoRecall.guardFetch(options);
+ 				globalThis[Symbol.for("dsh-go.capture-model-request")]?.(extensions.payload);
++				const requestTime = Date.now();
+ 				const response = await fetch(`${messagesApiRoot(connection.baseURL)}/messages`, {
+ 					method: "POST",
+ 					signal,
+@@ -2268,7 +2273,14 @@
+ 				}
+ 				await extensions.accept();
+ 				if (response.body === null) throw new LlmError("DeepSeek Messages returned no response body", "EMPTY_RESPONSE");
+-				yield* translate(parseSse(response.body, activity), options.model);
++				let reportedUsage;
++				try {
++					yield* translate(parseSse(response.body, activity), options.model, usage => { reportedUsage = usage; });
++				} finally {
++					if (reportedUsage !== void 0 && options.provider === "deepseek-official") {
++						globalThis[Symbol.for("dsh-go.record-model-usage")]?.({ time: requestTime, model: options.model, usage: reportedUsage });
++					}
++				}
+ 				return;
+ 			}
+ 		} catch (error) {

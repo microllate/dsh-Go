@@ -144,6 +144,26 @@
         }
       }
     },
+    "model-request-capture.diff": {
+      "0.2.2-rc.1": {
+        "node_modules/@deepseek-ai/dsh-llm-deepseek/lib/index.js": {
+          "after": "b3834c4500488f47e7a1233b736026a67f46e25f99a009e3ab46509181b012d7",
+          "before": "33932219045bc1f31f96c94ce2a18883ad108ecdf0f7f74d7911e8a7d6257917"
+        },
+        "node_modules/@earendil-works/pi-ai/dist/api/openai-completions.js": {
+          "after": "6732336feabd37aead5b4f6d019d23aa7252b7477788a5a6464e61d968feb8d0",
+          "before": "f10502eab12993c68c1f886e5de5d3aa707604f504660cb861fc1b45faffecaf"
+        }
+      }
+    },
+    "model-request-usage.diff": {
+      "0.2.2-rc.1": {
+        "node_modules/@deepseek-ai/dsh-llm-deepseek/lib/index.js": {
+          "after": "a013a0b560f46416f700e1ad430eb10fcb31bdf91329697a310d1765a593f864",
+          "before": "b3834c4500488f47e7a1233b736026a67f46e25f99a009e3ab46509181b012d7"
+        }
+      }
+    },
     "piai-anthropic-opus55-thinking.diff": {
       "0.2.2-rc.1": {
         "node_modules/@earendil-works/pi-ai/dist/api/anthropic-messages.js": {

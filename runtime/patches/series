@@ -149,3 +149,5 @@ fork-default-effort.diff
 config-editor-lock-order.diff
 piai-overflow-output-limit.diff
 session-fork-workspace.diff
+model-request-capture.diff
+model-request-usage.diff

@@ -26,6 +26,8 @@ import { createPluginConfig, pluginConfigUnavailable } from "./plugin-config.js"
 import { injectPromiseWithResolvers } from "./web-promise.js";
 import { createSessionDeletion, sessionDeletionUnavailable } from "./session-deletion.js";
 import { createSpeechRoutes } from "./speech.js";
+import { createRequestCapture, requestCaptureHook } from "./request-capture.js";
+import { createRequestUsage, requestUsageHook } from "./request-usage.js";
 import { createCompanionRoutes } from "./companion/routes.js";
 import { createCompanionPromptContext, FULL_PRESET } from './companion/prompt-context.js';
 import { createCompanionStore } from "./companion/store.js";
@@ -398,6 +400,28 @@ export function apply(ctx, config) {
     pluginConfig = createPluginConfig(webCtx, { readBody, send });
     const sessionDeletion = createSessionDeletion(webCtx, { readBody, send });
     const speechRoutes = createSpeechRoutes(webCtx, { send, fetch: options.speech?.fetch, apiKeyEnv: options.speech?.apiKeyEnv });
+    const requestCapture = createRequestCapture();
+    const requestUsage = createRequestUsage();
+    webCtx.effect(() => {
+      const record = entry => {
+        try {
+          requestUsage.record(entry);
+        } catch {
+          webCtx.logger("dsh-go-bridge").warn("Could not save model usage");
+        }
+      };
+      globalThis[requestUsageHook] = record;
+      return () => {
+        if (globalThis[requestUsageHook] === record) delete globalThis[requestUsageHook];
+      };
+    }, "dsh-go-bridge: model request usage");
+    webCtx.effect(() => {
+      const capture = body => void requestCapture.capture(body);
+      globalThis[requestCaptureHook] = capture;
+      return () => {
+        if (globalThis[requestCaptureHook] === capture) delete globalThis[requestCaptureHook];
+      };
+    }, "dsh-go-bridge: model request capture");
     webCtx.effect(() => () => speechRoutes.dispose(), "dsh-go-bridge: speech routes");
     const companionRoutes = createCompanionRoutes({ send, store: companionStore, recall: companionRecall, signals: companionSignals, ctx: webCtx, promptContext: companionPrompt });
     webCtx.effect(() => () => nativeRoutes.dispose(), "dsh-go-bridge: native routes");
@@ -418,6 +442,26 @@ export function apply(ctx, config) {
       if (rejection !== undefined) return send(res, rejection, rejection === 503 && (sessionDeletionUnavailable(req) || pluginConfigUnavailable(req)) || STATUS_CODES[rejection]);
       const url = new URL(req.url ?? "/", "http://dsh-go.invalid");
       const path = url.pathname;
+      if (path === `${PREFIX}/v1/request-usage`) {
+        if (req.method !== "GET") return send(res, 405, { error: "method-not-allowed" });
+        if (url.searchParams.get("probe") === "1") return send(res, 200, {});
+        const offset = Number(url.searchParams.get("offset") ?? 0);
+        if (!Number.isSafeInteger(offset) || offset < 0) return send(res, 400, { error: "invalid-offset" });
+        return send(res, 200, requestUsage.read(offset));
+      }
+      if (path === `${PREFIX}/v1/request-capture`) {
+        if (req.method === "GET") return send(res, 200, requestCapture.status());
+        if (req.method !== "POST") return send(res, 405, { error: "method-not-allowed" });
+        let armed;
+        try {
+          armed = JSON.parse((await readBody(req, 4096)).toString("utf8")).armed;
+        } catch {
+          return send(res, 400, { error: "invalid-capture-setting" });
+        }
+        if (typeof armed !== "boolean") return send(res, 400, { error: "invalid-capture-setting" });
+        if (!requestCapture.setArmed(armed)) return send(res, 409, requestCapture.status());
+        return send(res, 200, requestCapture.status());
+      }
       if (await sessionDeletion.handle(req, res, path)) return;
       if (await pluginConfig.handle(req, res, path)) return;
       if (await speechRoutes.handle(req, res, path)) return;

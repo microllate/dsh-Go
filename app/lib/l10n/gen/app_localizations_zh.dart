@@ -6725,6 +6725,26 @@ class L10nZh extends L10n {
   String get engineProvidersTitle => '模型';
 
   @override
+  String get engineCaptureNextRequest => '抓取下一次模型请求 JSON';
+
+  @override
+  String get engineCaptureNextRequestDetail => '保存下一次 OpenAI 兼容或 DeepSeek 请求到 Download/DSH-Go，成功后自动关闭。文件可能包含完整对话和工具参数。';
+
+  @override
+  String get engineCaptureNeedsPhoneFiles => '请先开启「访问手机文件」。';
+
+  @override
+  String get engineCaptureRequestFailed => '无法读取抓取状态或保存文件，请检查本机引擎和手机文件权限。';
+
+  @override
+  String get settingsDailyUsageDelete => '删除当天用量';
+
+  @override
+  String settingsDailyUsageDeleteDetail(String date) {
+    return '删除 $date 的本机用量记录？DeepSeek 平台账单不受影响。';
+  }
+
+  @override
   String get engineProvidersNotConnected => '没有连上引擎';
 
   @override

@@ -3,6 +3,8 @@
 // (when the engine has the sign-in bridge), then the custom providers of the
 // active engine (llm-pi-ai routes) and 「添加渠道」.
 
+import 'dart:convert';
+
 import 'package:dsh_client/dsh_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -57,6 +59,12 @@ class ProvidersPage extends ConsumerWidget {
           : Text(summary),
       children: [
         const NewChatDefaultsCard(),
+        if (conn?.isLocal == true)
+          _RequestCaptureTile(
+            key: ObjectKey(conn!.client),
+            client: conn.client,
+            phoneStorage: ref.watch(settingsProvider.select((state) => state.phoneStorage)),
+          ),
         const _DeepSeekCard(),
         const _SubscriptionAccounts(),
         if (view.value?.supported == false)
@@ -106,6 +114,74 @@ class ProvidersPage extends ConsumerWidget {
             },
           ),
       ],
+    );
+  }
+}
+
+class _RequestCaptureTile extends StatefulWidget {
+  const _RequestCaptureTile({super.key, required this.client, required this.phoneStorage});
+
+  final DshClient client;
+  final bool phoneStorage;
+
+  @override
+  State<_RequestCaptureTile> createState() => _RequestCaptureTileState();
+}
+
+class _RequestCaptureTileState extends State<_RequestCaptureTile> {
+  static const _path = '/dsh-go/v1/request-capture';
+  bool _loading = true;
+  bool _armed = false;
+  bool _failed = false;
+  String? _file;
+
+  @override
+  void initState() {
+    super.initState();
+    _read();
+  }
+
+  Future<void> _read([bool? armed]) async {
+    setState(() {
+      _loading = true;
+      _failed = false;
+    });
+    try {
+      final connection = widget.client.connection;
+      final response = armed == null ? await connection.get(_path) : await connection.postJson(_path, {'armed': armed});
+      if (response.statusCode != 200) {
+        if (mounted) setState(() => _failed = true);
+        return;
+      }
+      final value = jsonDecode(response.text) as Map<String, Object?>;
+      if (!mounted) return;
+      setState(() {
+        _armed = value['armed'] == true;
+        _failed = value['failed'] == true;
+        _file = value['file'] as String?;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _failed = true);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    return SwitchListTile(
+      title: Text(l10n.engineCaptureNextRequest),
+      subtitle: Text(
+        [
+          l10n.engineCaptureNextRequestDetail,
+          if (!widget.phoneStorage) l10n.engineCaptureNeedsPhoneFiles,
+          if (_failed) l10n.engineCaptureRequestFailed,
+          ?_file,
+        ].join('\n'),
+      ),
+      value: _armed,
+      onChanged: !_loading && (widget.phoneStorage || _armed) ? _read : null,
     );
   }
 }

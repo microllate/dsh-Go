@@ -12614,6 +12614,42 @@ abstract class L10n {
   /// **'模型'**
   String get engineProvidersTitle;
 
+  /// No description provided for @engineCaptureNextRequest.
+  ///
+  /// In zh, this message translates to:
+  /// **'抓取下一次模型请求 JSON'**
+  String get engineCaptureNextRequest;
+
+  /// No description provided for @engineCaptureNextRequestDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存下一次 OpenAI 兼容或 DeepSeek 请求到 Download/DSH-Go，成功后自动关闭。文件可能包含完整对话和工具参数。'**
+  String get engineCaptureNextRequestDetail;
+
+  /// No description provided for @engineCaptureNeedsPhoneFiles.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先开启「访问手机文件」。'**
+  String get engineCaptureNeedsPhoneFiles;
+
+  /// No description provided for @engineCaptureRequestFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法读取抓取状态或保存文件，请检查本机引擎和手机文件权限。'**
+  String get engineCaptureRequestFailed;
+
+  /// No description provided for @settingsDailyUsageDelete.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除当天用量'**
+  String get settingsDailyUsageDelete;
+
+  /// No description provided for @settingsDailyUsageDeleteDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除 {date} 的本机用量记录？DeepSeek 平台账单不受影响。'**
+  String settingsDailyUsageDeleteDetail(String date);
+
   /// No description provided for @engineProvidersNotConnected.
   ///
   /// In zh, this message translates to:

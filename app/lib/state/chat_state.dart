@@ -1454,18 +1454,19 @@ class ChatController extends Notifier<ChatState> {
 
   void _recordDailyUsage(DshEvent event) {
     if (!ref.mounted || ref.read(activeConnectionProvider).value?.isLocal != true) return;
+    final client = _client;
+    if (client == null) return;
     final cursor = _transcript.cursor;
     // A resync may deliver replies missed during a temporary disconnect.
     // The initial snapshot is history and does not seed this ledger.
     final Iterable<AssistantMessageEvent> replies = switch (event) {
       AssistantMessageEvent() => [event],
-      SessionSnapshotEvent(:final events, isResync: true) when cursor >= 0 =>
-        events.whereType<AssistantMessageEvent>(),
+      SessionSnapshotEvent(:final events, isResync: true) when cursor >= 0 => events.whereType<AssistantMessageEvent>(),
       _ => const [],
     };
     for (final reply in replies) {
       if (reply.seq <= cursor || reply.usage == null) continue;
-      unawaited(ref.read(dailyUsageProvider.notifier).record(sessionId, reply));
+      unawaited(ref.read(dailyUsageProvider.notifier).recordLive(client, sessionId, reply));
     }
   }
 

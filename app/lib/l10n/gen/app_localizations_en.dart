@@ -7091,6 +7091,28 @@ class L10nEn extends L10n {
   String get engineProvidersTitle => 'Models';
 
   @override
+  String get engineCaptureNextRequest => 'Capture next model request as JSON';
+
+  @override
+  String get engineCaptureNextRequestDetail =>
+      'Save the next OpenAI-compatible or DeepSeek request to Download/DSH-Go. Turns off after saving. The file may contain the full conversation and tool arguments.';
+
+  @override
+  String get engineCaptureNeedsPhoneFiles => 'Enable access to phone files first.';
+
+  @override
+  String get engineCaptureRequestFailed =>
+      'Could not read capture status or save the file. Check the local engine and phone file access.';
+
+  @override
+  String get settingsDailyUsageDelete => 'Delete daily usage';
+
+  @override
+  String settingsDailyUsageDeleteDetail(String date) {
+    return 'Delete local usage records for $date? Your DeepSeek bill stays the same.';
+  }
+
+  @override
   String get engineProvidersNotConnected => 'Not connected to the engine';
 
   @override

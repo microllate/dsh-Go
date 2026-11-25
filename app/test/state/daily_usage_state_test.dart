@@ -5,28 +5,40 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-AssistantMessageEvent reply(DateTime time, {String provider = 'deepseek-official'}) =>
-    AssistantMessageEvent(
-      4,
-      time,
-      const {},
-      turn: 1,
-      step: 1,
-      message: Message.fromJson({
-        'id': 'assistant',
-        'role': 'assistant',
-        'source': {'kind': 'model', 'provider': provider, 'model': 'deepseek-flash'},
-      }),
-      usage: const TokenUsage(
-        inputTokens: 100,
-        outputTokens: 20,
-        cacheReadTokens: 200,
-        cacheWriteTokens: 10,
-      ),
-    );
+AssistantMessageEvent reply(DateTime time, {String provider = 'deepseek-official'}) => AssistantMessageEvent(
+  4,
+  time,
+  const {},
+  turn: 1,
+  step: 1,
+  message: Message.fromJson({
+    'id': 'assistant',
+    'role': 'assistant',
+    'source': {'kind': 'model', 'provider': provider, 'model': 'deepseek-flash'},
+  }),
+  usage: const TokenUsage(inputTokens: 100, outputTokens: 20, cacheReadTokens: 200, cacheWriteTokens: 10),
+);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('deletes one day and ignores replayed records from before deletion', () async {
+    SharedPreferences.setMockInitialValues({});
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await container.read(dailyUsageProvider.future);
+    final notifier = container.read(dailyUsageProvider.notifier);
+    final now = DateTime.now();
+    final yesterday = DateTime(now.year, now.month, now.day - 1, 12);
+    final other = DateTime(now.year, now.month, now.day - 2, 12);
+    String day(DateTime time) => time.toIso8601String().split('T').first;
+    await notifier.record('yesterday', reply(yesterday));
+    await notifier.record('other', reply(other));
+    await notifier.deleteDay(day(yesterday));
+    await notifier.record('yesterday', reply(yesterday));
+    final days = await container.read(dailyUsageProvider.future);
+    expect(days.map((day) => day.date), [day(other)]);
+  });
 
   test('groups by device date, persists cost and deduplicates replays', () async {
     SharedPreferences.setMockInitialValues({});

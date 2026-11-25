@@ -3803,6 +3803,19 @@
   "engineProviderInactive": "未启用",
   "engineProviderConfiguredInWeb": "网页版配置",
   "engineProvidersTitle": "模型",
+  "engineCaptureNextRequest": "抓取下一次模型请求 JSON",
+  "engineCaptureNextRequestDetail": "保存下一次 OpenAI 兼容或 DeepSeek 请求到 Download/DSH-Go，成功后自动关闭。文件可能包含完整对话和工具参数。",
+  "engineCaptureNeedsPhoneFiles": "请先开启「访问手机文件」。",
+  "engineCaptureRequestFailed": "无法读取抓取状态或保存文件，请检查本机引擎和手机文件权限。",
+  "settingsDailyUsageDelete": "删除当天用量",
+  "settingsDailyUsageDeleteDetail": "删除 {date} 的本机用量记录？DeepSeek 平台账单不受影响。",
+  "@settingsDailyUsageDeleteDetail": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
   "engineProvidersNotConnected": "没有连上引擎",
   "engineProvidersStartEngine": "引擎运行后可添加渠道",
   "engineProvidersUnsupported": "这台主机不支持自定义渠道",

@@ -271,6 +271,17 @@
   "engineProviderInactive": "Not enabled",
   "engineProviderConfiguredInWeb": "Configured in Web",
   "engineProvidersTitle": "Models",
+  "engineCaptureNextRequest": "Capture next model request as JSON",
+  "engineCaptureNextRequestDetail": "Save the next OpenAI-compatible or DeepSeek request to Download/DSH-Go. Turns off after saving. The file may contain the full conversation and tool arguments.",
+  "engineCaptureNeedsPhoneFiles": "Enable access to phone files first.",
+  "engineCaptureRequestFailed": "Could not read capture status or save the file. Check the local engine and phone file access.",
+  "settingsDailyUsageDelete": "Delete daily usage",
+  "settingsDailyUsageDeleteDetail": "Delete local usage records for {date}? Your DeepSeek bill stays the same.",
+  "@settingsDailyUsageDeleteDetail": {
+    "placeholders": {
+      "date": {"type": "String"}
+    }
+  },
   "engineProvidersNotConnected": "Not connected to the engine",
   "engineProvidersStartEngine": "Start the engine to add providers",
   "engineProvidersUnsupported": "This host doesn’t support custom providers",
