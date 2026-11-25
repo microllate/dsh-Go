@@ -151,3 +151,4 @@ piai-overflow-output-limit.diff
 session-fork-workspace.diff
 model-request-capture.diff
 model-request-usage.diff
+compact-chat-tool-catalog.diff

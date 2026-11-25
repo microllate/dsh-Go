@@ -1,0 +1,65 @@
+--- a/node_modules/@deepseek-ai/dsh-tools/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-tools/lib/index.js
+@@ -644,6 +644,46 @@
+ 		const view = this.view(scope);
+ 		return view.registrations.get(name)?.when === void 0 ? view.visible.get(name) : void 0;
+ 	}
++	/** Only the local standard chat uses the smaller model-facing catalog. */
++	optionalToolsByAgent = new WeakMap();
++	compactCatalog(agent, admitted) {
++		const turn = agent.phase?.turn;
++		const header = agent.session?.header;
++		if (!process.env.DSH_GO_RUNTIME_ROOT || turn === void 0
++			|| header?.origin === "subagent" || (header?.delegationDepth ?? 0) > 0
++			|| agent.ctx.get("agentPresets")?.composedPreset(agent.ctx) !== "standard"
++			|| this.selectExecutor(agent).describe([]).schemas.length !== 0
++			|| admitted.has("load_optional_tools")) return;
++		const defaults = new Set(["bash", "mcp__phone__android_shell", "exit_plan_mode"]);
++		const optional = [...admitted.keys()].filter((name) => !defaults.has(name)).sort();
++		if (optional.length === 0) return;
++		let selection = this.optionalToolsByAgent.get(agent);
++		if (selection?.turn !== turn) {
++			selection = { turn, names: new Set() };
++			this.optionalToolsByAgent.set(agent, selection);
++		}
++		for (const name of optional) if (!selection.names.has(name)) admitted.delete(name);
++		return defineTool({
++			name: "load_optional_tools",
++			description: "Load optional tools for the rest of this turn. Pass exact names, or omit names to list available tools for files, web, memory, phone, jobs and plugins. Call the loaded tools in the next step.",
++			parameters: { names: { type: "array", items: { type: "string" } } },
++			output: {
++				schema: { type: "string" },
++				render: (_args, value) => [{ type: "text", text: value }]
++			},
++			async execute({ names }) {
++				if (names === void 0 || names.length === 0) return optional.join(", ");
++				const available = new Set(optional);
++				const loaded = [...new Set(names)].filter((name) => available.has(name));
++				for (const name of loaded) selection.names.add(name);
++				const missing = names.filter((name) => !available.has(name));
++				return [
++					loaded.length > 0 ? `Available next step: ${loaded.join(", ")}` : "",
++					missing.length > 0 ? `Unavailable: ${missing.join(", ")}` : ""
++				].filter(Boolean).join("\n");
++			}
++		});
++	}
+ 	/**
+ 	* Resolve conditions once for this step without changing shared registrations.
+ 	* Cancellation or a rejected condition publishes no partial selection. Removed
+@@ -668,6 +708,7 @@
+ 			signal.throwIfAborted();
+ 			if (enabled) admitted.set(name, definition);
+ 		}
++		const loader = this.compactCatalog(agent, admitted);
+ 		let closed = false;
+ 		return Object.freeze({
+ 			dispose: () => {
+@@ -678,6 +719,7 @@
+ 				if (closed || scope !== agent) return visible;
+ 				const current = this.view(agent);
+ 				for (const [name, definition] of admitted) if (current.visible.get(name) === definition && current.registrations.get(name) === view.registrations.get(name)) visible.set(name, definition);
++				if (loader !== void 0 && !current.visible.has(loader.name)) visible.set(loader.name, loader);
+ 				return visible;
+ 			}
+ 		});

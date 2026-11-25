@@ -24,6 +24,14 @@
         }
       }
     },
+    "compact-chat-tool-catalog.diff": {
+      "0.2.2-rc.1": {
+        "node_modules/@deepseek-ai/dsh-tools/lib/index.js": {
+          "after": "225ef21e7cbd61272feebb8bae0db58defdaab0ab86354ef7d752cf33e7a6fa2",
+          "before": "8ae46512081dde3af5a12b7c3d37c2d7a89f48e344c15e2fdc2887f4176c8bf0"
+        }
+      }
+    },
     "config-editor-lock-order.diff": {
       "0.2.2-rc.1": {
         "node_modules/@deepseek-ai/dsh-config-editor/lib/index.js": {
