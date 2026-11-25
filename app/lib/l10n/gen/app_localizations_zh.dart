@@ -6740,6 +6740,9 @@ class L10nZh extends L10n {
   String get settingsDailyUsageDelete => '删除当天用量';
 
   @override
+  String get settingsDailyUsageLegacy => '历史用量估算';
+
+  @override
   String get settingsDailyUsageSyncFailed => '最新用量同步失败，以下为已保存的记录';
 
   @override

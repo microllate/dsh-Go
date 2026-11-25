@@ -1,5 +1,6 @@
 import 'package:dsh_app/tavern/tavern_preview.dart';
 import 'package:dsh_app/tavern/tavern_provider.dart';
+import 'package:dsh_app/ui/chat/render/markdown_body.dart';
 import 'package:dsh_app/ui/chat/widgets/thinking_pill.dart';
 import 'package:dsh_app/ui/tavern/tavern_character_page.dart';
 import 'package:dsh_app/ui/tavern/tavern_chat_page.dart';
@@ -88,6 +89,35 @@ void main() {
     final banner = find.byKey(const ValueKey('tavern-error'));
     expect(find.descendant(of: banner, matching: find.text('设置')), findsOneWidget);
     expect(find.descendant(of: banner, matching: find.text('重试')), findsNothing);
+  });
+
+  testWidgets('saving the sent line keeps the previous reply and its controls in place', (tester) async {
+    final tavern = PreviewTavern(tick: const Duration(milliseconds: 50));
+    final chat = await _open(tester, tavern);
+    final previous = (await tavern.path(chat)).last;
+    final reply = find.descendant(of: find.byKey(ValueKey(previous.nodeId)), matching: find.byType(MarkdownBody));
+    final original = tester.element(reply);
+
+    await tester.enterText(find.byType(TextField), '外面怎么了？');
+    await tester.pump();
+    await tester.tap(find.byIcon(AppIcons.send));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    final saved = (await tavern.path(chat)).firstWhere((message) => message.role == TavernRole.user);
+    expect(saved.text, '外面怎么了？');
+    final sentBubble = find.ancestor(
+      of: find.text(saved.text),
+      matching: find.byWidgetPredicate((widget) => widget is GestureDetector && widget.onLongPress != null),
+    );
+    expect(sentBubble, findsOneWidget);
+    expect(tester.element(reply), same(original));
+    final next = find.byKey(const ValueKey('tavern-next'));
+    expect(tester.widget<IconButton>(next).onPressed, isNull);
+
+    await _settle(tester);
   });
 
   testWidgets('switching an earlier message offers to undo', (tester) async {

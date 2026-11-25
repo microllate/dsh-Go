@@ -108,9 +108,12 @@ class _DailyUsagePageState extends ConsumerState<DailyUsagePage> {
             SettingsSection(
               title: date.format(DateTime.parse(day.date)),
               children: [
-                _totals(l10n, tokens, l10n.viewChartTotal, day.total),
-                _totals(l10n, tokens, l10n.tavernInspectCostPeak, day.peak),
-                _totals(l10n, tokens, l10n.tavernInspectCostOffPeak, day.offPeak),
+                if (!day.total.isEmpty) ...[
+                  _totals(l10n, tokens, l10n.viewChartTotal, day.total),
+                  _totals(l10n, tokens, l10n.tavernInspectCostPeak, day.peak),
+                  _totals(l10n, tokens, l10n.tavernInspectCostOffPeak, day.offPeak),
+                ],
+                if (!day.legacy.isEmpty) _totals(l10n, tokens, l10n.settingsDailyUsageLegacy, day.legacy),
                 ListTile(
                   leading: const Icon(Icons.delete_outline),
                   title: Text(l10n.settingsDailyUsageDelete),

@@ -159,15 +159,14 @@ class TavernModelClient {
     http.Client Function()? clientFactory,
     this.idleTimeout = const Duration(minutes: 5),
     this.onRequestUsage,
-  })
-    : _clientFactory = clientFactory ?? http.Client.new;
+  }) : _clientFactory = clientFactory ?? http.Client.new;
 
   final http.Client Function() _clientFactory;
   final Duration idleTimeout;
 
   /// Observes the latest provider counters once per completed or cancelled
   /// HTTP attempt. Synthetic estimates and attempts without counters are omitted.
-  final void Function(Uri endpoint, TavernUsage usage)? onRequestUsage;
+  final void Function(Uri endpoint, TavernUsage usage, DateTime startedAt)? onRequestUsage;
 
   /// [body] is the final, inspected request from the assembler. This method
   /// supplies transport settings and removes DeepSeek-only wire fields for
@@ -259,7 +258,20 @@ class TavernModelClient {
     void Function(int attempt)? onRequestStarted,
   }) async* {
     http.Client? client;
+    final startedAt = DateTime.now();
     TavernUsage? reportedUsage;
+    var completeUsage = false;
+
+    void recordUsage() {
+      final usage = reportedUsage;
+      if (usage == null || !completeUsage) return;
+      try {
+        onRequestUsage?.call(uri, usage, startedAt);
+      } catch (_) {
+        // Usage accounting cannot change the outcome of the model call.
+      }
+    }
+
     try {
       cancellation.check();
       final request = http.AbortableRequest('POST', uri, abortTrigger: cancellation.whenCancelled)
@@ -328,6 +340,7 @@ class TavernModelClient {
         }
         if (result['usage'] case final Map<String, dynamic> usage) {
           reportedUsage = _usage(usage, result['model'] as String? ?? config.model);
+          completeUsage = _completeUsage(usage);
         }
         if (result['error'] != null) throw _apiError(200, text, key, headers.values);
         final choice = _firstChoice(result);
@@ -361,6 +374,7 @@ class TavernModelClient {
         final reason = choice['finish_reason'] as String?;
         _checkFinish(reason);
         cancellation.check();
+        recordUsage();
         yield ModelFinished(reason, assistantSnapshot: assistant.finish(), finalUsageReport: usageReport);
         return;
       }
@@ -371,6 +385,7 @@ class TavernModelClient {
       final assistant = _AssistantCollector('streaming_aggregate');
       ModelUsageReport? usageReport;
       var usageObservationIndex = 0;
+      final mergedUsage = <String, Object?>{};
       await for (final event in decodeServerSentEvents(response.stream.timeout(idleTimeout))) {
         cancellation.check();
         if (event == '[DONE]') {
@@ -398,10 +413,14 @@ class TavernModelClient {
           );
           _observeUsage(cancellation, usageReport);
         }
-        final chunkUsage = switch (data['usage']) {
-          final Map<String, dynamic> usage => _usage(usage, data['model'] as String? ?? config.model),
-          _ => null,
-        };
+        TavernUsage? chunkUsage;
+        if (data['usage'] case final Map<String, dynamic> usage) {
+          for (final entry in usage.entries) {
+            if (entry.value != null) mergedUsage[entry.key] = entry.value;
+          }
+          chunkUsage = _usage(mergedUsage, data['model'] as String? ?? reportedUsage?.model ?? config.model);
+          completeUsage = _completeUsage(mergedUsage);
+        }
         if (chunkUsage != null) reportedUsage = chunkUsage;
         if (data['error'] != null) throw _apiError(200, event, key, headers.values);
         final choice = _firstChoice(data);
@@ -445,16 +464,10 @@ class TavernModelClient {
       }
       _checkFinish(finishReason);
       cancellation.check();
+      recordUsage();
       yield ModelFinished(finishReason, assistantSnapshot: assistant.finish(), finalUsageReport: usageReport);
     } finally {
       client?.close();
-      if (reportedUsage case final usage?) {
-        try {
-          onRequestUsage?.call(uri, usage);
-        } catch (_) {
-          // Usage accounting cannot change the outcome of the model call.
-        }
-      }
     }
   }
 
@@ -656,11 +669,20 @@ Iterable<ModelToolFragment> _toolFragments(Object? value, {required bool streami
   }
 }
 
+bool _completeUsage(Map<String, Object?> data) =>
+    data['completion_tokens'] is num &&
+    (data['prompt_tokens'] is num ||
+        (data['prompt_cache_hit_tokens'] is num && data['prompt_cache_miss_tokens'] is num));
+
 TavernUsage _usage(Map<String, Object?> data, String model) {
   int number(Object? value) => value is num ? value.toInt() : 0;
+  final hit = number(data['prompt_cache_hit_tokens'] ?? _object(data['prompt_tokens_details'])['cached_tokens']);
+  final miss = data['prompt_cache_miss_tokens'];
   return TavernUsage(
-    promptTokens: number(data['prompt_tokens']),
-    cacheHitTokens: number(data['prompt_cache_hit_tokens'] ?? _object(data['prompt_tokens_details'])['cached_tokens']),
+    promptTokens: miss is num && data['prompt_cache_hit_tokens'] is num
+        ? hit + number(miss)
+        : number(data['prompt_tokens']),
+    cacheHitTokens: hit,
     completionTokens: number(data['completion_tokens']),
     model: model,
   );

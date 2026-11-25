@@ -22,8 +22,10 @@ test("provider usage survives reopening and advances a stable read offset", asyn
   assert.equal(page.records.length, 1);
   assert.deepEqual(page.records[0].slice(1), [request.time, request.model, 90, 17, 4]);
   assert.deepEqual(second.read(page.offset), { offset: page.offset, records: [] });
-  second.record(request);
+  second.record({ ...request, settled: true });
   const next = first.read(page.offset);
   assert.equal(next.records.length, 1);
-  assert.notEqual(next.records[0][0], page.records[0][0]);
+  assert.match(next.records[0][0], /^v2:/);
+  assert.doesNotMatch(page.records[0][0], /^v2:/);
+  assert.deepEqual(next.records[0].slice(1), page.records[0].slice(1));
 });

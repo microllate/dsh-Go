@@ -7108,6 +7108,9 @@ class L10nEn extends L10n {
   String get settingsDailyUsageDelete => 'Delete daily usage';
 
   @override
+  String get settingsDailyUsageLegacy => 'Historical usage estimate';
+
+  @override
   String get settingsDailyUsageSyncFailed => 'Could not sync the latest usage. Showing saved records.';
 
   @override

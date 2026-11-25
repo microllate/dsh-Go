@@ -40,7 +40,7 @@ void main() {
     expect(days.map((day) => day.date), [day(other)]);
   });
 
-  test('groups by device date, persists cost and deduplicates replays', () async {
+  test('keeps old device dates and deduplicates historical estimates', () async {
     SharedPreferences.setMockInitialValues({});
     final container = ProviderContainer();
     addTearDown(container.dispose);
@@ -62,16 +62,17 @@ void main() {
     await reopened.read(dailyUsageProvider.notifier).record('session-a', priced);
     final days = await reopened.read(dailyUsageProvider.future);
     expect(days.map((day) => day.date), ['2026-11-22', '2026-11-21']);
-    expect(days.first.total.input, 310);
-    expect(days.first.total.unpriced, 1);
-    expect(days.first.total.cny, isNull);
-    expect(days.last.total.input, 310);
-    expect(days.last.total.output, 20);
-    expect(days.last.total.cacheRead, 200);
-    expect(days.last.total.cny, closeTo(0.000194, 1e-10));
+    expect(days.first.legacy.input, 310);
+    expect(days.first.legacy.unpriced, 1);
+    expect(days.first.legacy.cny, isNull);
+    expect(days.last.legacy.input, 310);
+    expect(days.last.legacy.output, 20);
+    expect(days.last.legacy.cacheRead, 200);
+    expect(days.last.legacy.cny, closeTo(0.000194, 1e-10));
+    expect(days.every((day) => day.total.isEmpty), isTrue);
   });
 
-  test('splits persisted replies at weekday peak boundaries', () async {
+  test('splits settled requests at weekday peak boundaries', () async {
     SharedPreferences.setMockInitialValues({});
     final container = ProviderContainer();
     addTearDown(container.dispose);
@@ -85,7 +86,11 @@ void main() {
       DateTime.utc(2026, 11, 23, 6),
       DateTime.utc(2026, 11, 23, 10),
     ]) {
-      await notifier.record('session-a', reply(time));
+      await notifier.recordTavern(
+        Uri.parse('https://api.deepseek.com/beta/chat/completions'),
+        const TavernUsage(promptTokens: 310, cacheHitTokens: 200, completionTokens: 20, model: 'deepseek-flash'),
+        time,
+      );
     }
     final days = await container.read(dailyUsageProvider.future);
     final peak = days.fold(const UsageTotals(), (sum, day) => sum + day.peak);
@@ -101,7 +106,7 @@ void main() {
     expect(offPeak.cny, closeTo(3 * 0.000194, 1e-10));
   });
 
-  test('combines Tavern and ordinary chat and prices only official endpoints', () async {
+  test('keeps historical estimates apart and prices only official endpoints', () async {
     SharedPreferences.setMockInitialValues({});
     final container = ProviderContainer();
     addTearDown(container.dispose);
@@ -115,12 +120,13 @@ void main() {
 
     final days = await container.read(dailyUsageProvider.future);
     final total = days.single.peak;
-    expect(total.input, 510);
-    expect(total.cacheRead, 360);
-    expect(total.output, 38);
+    expect(days.single.legacy.input, 310);
+    expect(total.input, 200);
+    expect(total.cacheRead, 160);
+    expect(total.output, 18);
     expect(total.unpriced, 1);
-    expect(total.cost!.hit, closeTo(0.0000112, 1e-10));
-    expect(total.cost!.miss, closeTo(0.000260, 1e-10));
-    expect(total.cost!.out, closeTo(0.000232, 1e-10));
+    expect(total.cost!.hit, closeTo(0.0000032, 1e-10));
+    expect(total.cost!.miss, closeTo(0.000040, 1e-10));
+    expect(total.cost!.out, closeTo(0.000072, 1e-10));
   });
 }

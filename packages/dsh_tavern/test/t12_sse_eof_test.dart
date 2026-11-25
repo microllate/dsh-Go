@@ -77,6 +77,38 @@ void main() {
     });
   });
 
+  test('loopback billing merges usage and records one completed request', () async {
+    final started = DateTime.now();
+    final input = {
+      'usage': {'prompt_cache_hit_tokens': 2, 'prompt_cache_miss_tokens': 5},
+    };
+    final terminal = {
+      ..._chunk(finishReason: 'stop'),
+      'usage': {'completion_tokens': 3},
+    };
+    await _withEndpoint('${_prefix}data: ${jsonEncode(input)}\n\ndata: ${jsonEncode(terminal)}\n\n', (endpoint) async {
+      await endpoint.generate().drain<void>();
+      await endpoint.verifyOneRequest();
+      final (usage, startedAt) = endpoint.billed.single;
+      expect(usage.promptTokens, 7);
+      expect(usage.cacheHitTokens, 2);
+      expect(usage.completionTokens, 3);
+      expect(startedAt.isBefore(started), isFalse);
+    });
+  });
+
+  test('loopback billing skips usage from an unfinished response', () async {
+    final partial = {
+      ..._chunk(),
+      'usage': {'prompt_tokens': 7, 'completion_tokens': 3},
+    };
+    await _withEndpoint('${_prefix}data: ${jsonEncode(partial)}\n\n', (endpoint) async {
+      await expectLater(endpoint.generate().drain<void>(), throwsA(isA<TavernModelException>()));
+      await endpoint.verifyOneRequest();
+      expect(endpoint.billed, isEmpty);
+    });
+  });
+
   test('loopback a complete DONE event still succeeds with a null finish reason', () async {
     expect(_closedDone, '$_openDone\n');
     await _withEndpoint(_closedDone, (endpoint) async {
@@ -231,7 +263,11 @@ class _Endpoint {
   final HttpServer server;
   final String wire;
   late final StreamSubscription<HttpRequest> subscription;
-  final model = TavernModelClient(idleTimeout: const Duration(seconds: 10));
+  final billed = <(TavernUsage, DateTime)>[];
+  late final model = TavernModelClient(
+    idleTimeout: const Duration(seconds: 10),
+    onRequestUsage: (_, usage, startedAt) => billed.add((usage, startedAt)),
+  );
   final pending = <Future<void>>[];
   final errors = <Object>[];
   final methods = <String>[];

@@ -1557,7 +1557,10 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
       _ => (l10n.tavernReady, StatusTone.ok),
     };
     final topInset = BotChatHeader.heightOf(context);
-    final lastCharacter = messages?.lastWhere((m) => m.role == TavernRole.character, orElse: () => _none).nodeId;
+    // Keep the previous reply's controls in place while the new one is streaming.
+    final lastCharacter = messages
+        ?.lastWhere((m) => m.role == TavernRole.character && m.nodeId != _streamNode, orElse: () => _none)
+        .nodeId;
 
     final shown = switch (_pendingUser) {
       final pending? => [...?messages, pending],
@@ -2155,12 +2158,11 @@ class _MessageRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final drawn = novel ? _novel(context) : _bubble(context);
     // A reply with alternatives swipes sideways through them, like ‹ ›.
-    final swipes = message.role == TavernRole.character && !busy && (last || message.siblingCount > 1);
-    final body = swipes
+    final body = message.role == TavernRole.character
         ? _SwipeToSwitch(
             key: ValueKey('tavern-swipe-${message.nodeId}'),
-            canPrevious: message.siblingIndex > 0,
-            canNext: message.siblingIndex + 1 < message.siblingCount || last,
+            canPrevious: !busy && message.siblingIndex > 0,
+            canNext: !busy && (message.siblingIndex + 1 < message.siblingCount || last),
             onSwitch: onSibling,
             child: drawn,
           )
@@ -2518,21 +2520,20 @@ class _SwipeToSwitchState extends State<_SwipeToSwitch> {
     } else if (widget.canPrevious && (_dx >= _distance || v >= _flick)) {
       widget.onSwitch(-1);
     }
-    setState(() {
-      _dragging = false;
-      _dx = 0;
-    });
+    _resetDrag();
   }
+
+  void _resetDrag() => setState(() {
+    _dragging = false;
+    _dx = 0;
+  });
 
   @override
   Widget build(BuildContext context) => GestureDetector(
     behavior: HitTestBehavior.translucent,
-    onHorizontalDragUpdate: _update,
-    onHorizontalDragEnd: _end,
-    onHorizontalDragCancel: () => setState(() {
-      _dragging = false;
-      _dx = 0;
-    }),
+    onHorizontalDragUpdate: widget.canPrevious || widget.canNext ? _update : null,
+    onHorizontalDragEnd: widget.canPrevious || widget.canNext ? _end : null,
+    onHorizontalDragCancel: widget.canPrevious || widget.canNext ? _resetDrag : null,
     child: AnimatedContainer(
       duration: _dragging ? Duration.zero : AppMotion.of(context, AppMotion.standard),
       curve: AppMotion.std,

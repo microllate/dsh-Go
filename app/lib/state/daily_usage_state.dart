@@ -11,11 +11,12 @@ import 'connection_state.dart';
 final dailyUsageProvider = AsyncNotifierProvider<DailyUsageController, List<DailyUsage>>(DailyUsageController.new);
 
 class DailyUsage {
-  const DailyUsage(this.date, this.peak, this.offPeak);
+  const DailyUsage(this.date, this.peak, this.offPeak, this.legacy);
 
   final String date;
   final UsageTotals peak;
   final UsageTotals offPeak;
+  final UsageTotals legacy;
 
   UsageTotals get total => peak + offPeak;
 }
@@ -29,6 +30,7 @@ class UsageTotals {
   final int output;
   final int cacheRead;
   final UsagePrice? cost;
+  bool get isEmpty => input == 0 && output == 0;
   double? get cny => cost == null ? null : cost!.hit + cost!.miss + cost!.out;
   final int unpriced;
 
@@ -47,7 +49,7 @@ class UsageTotals {
   );
 }
 
-/// Credits provider-reported replies to their completion day in the device time zone.
+/// Tracks settled requests and keeps existing estimates available by day.
 class DailyUsageController extends AsyncNotifier<List<DailyUsage>> {
   static const _prefix = 'local_chat_usage_v1.';
   static const _deletedPrefix = 'local_chat_usage_deleted_before.';
@@ -93,7 +95,7 @@ class DailyUsageController extends AsyncNotifier<List<DailyUsage>> {
               final int output,
             ]) {
               final time = DateTime.fromMillisecondsSinceEpoch(timestamp, isUtc: true);
-              final day = _day(time);
+              final day = _day(time, settled: id.startsWith('v2:'));
               if (_wasDeleted(prefs, day, timestamp)) continue;
               final entries = days.putIfAbsent(day, () => _entries(prefs.getString('$_prefix$day')));
               entries[jsonEncode(['request:$id', 0, timestamp])] = _pricedEntry(
@@ -169,7 +171,7 @@ class DailyUsageController extends AsyncNotifier<List<DailyUsage>> {
     final input = usage.promptTokens < 0 ? 0 : usage.promptTokens;
     final hit = usage.cacheHitTokens.clamp(0, input).toInt();
     return _record(
-      sessionId: 'tavern:${time.microsecondsSinceEpoch}',
+      sessionId: 'tavern-v2:${time.microsecondsSinceEpoch}',
       sequence: _tavernRequest++,
       time: time,
       hit: hit,
@@ -191,7 +193,7 @@ class DailyUsageController extends AsyncNotifier<List<DailyUsage>> {
     required String? model,
   }) {
     if (hit + miss + output <= 0) return Future.value();
-    final day = _day(time);
+    final day = _day(time, settled: sessionId.startsWith('tavern-v2:'));
     final key = '$_prefix$day';
     final timestamp = time.millisecondsSinceEpoch;
     final id = jsonEncode([sessionId, sequence, timestamp]);
@@ -204,7 +206,8 @@ class DailyUsageController extends AsyncNotifier<List<DailyUsage>> {
     });
   }
 
-  static String _day(DateTime time) => time.toLocal().toIso8601String().split('T').first;
+  static String _day(DateTime time, {required bool settled}) =>
+      (settled ? time.toUtc().add(const Duration(hours: 8)) : time.toLocal()).toIso8601String().split('T').first;
 
   static bool _wasDeleted(SharedPreferences prefs, String day, int timestamp) =>
       timestamp <= (prefs.getInt('$_deletedPrefix$day') ?? 0);
@@ -279,12 +282,13 @@ class DailyUsageController extends AsyncNotifier<List<DailyUsage>> {
   }
 
   static DailyUsage _readDay(String date, Map<String, dynamic> entries) {
+    var legacy = const UsageTotals();
     var peak = const UsageTotals();
     var offPeak = const UsageTotals();
     for (final record in entries.entries) {
       if (record.value case [final int input, final int output, final int cacheRead, final Object? storedCost]) {
         // The existing ledger key includes the completion time in epoch milliseconds.
-        if (jsonDecode(record.key) case [String _, int _, final int timestamp]) {
+        if (jsonDecode(record.key) case [final String id, int _, final int timestamp]) {
           // Older entries stored only a combined USD estimate.
           final cost = switch (storedCost) {
             [final num hit, final num miss, final num out] => (
@@ -301,7 +305,9 @@ class DailyUsageController extends AsyncNotifier<List<DailyUsage>> {
             cost: cost,
             unpriced: cost == null ? 1 : 0,
           );
-          if (tavernDeepSeekPeak(DateTime.fromMillisecondsSinceEpoch(timestamp, isUtc: true))) {
+          if (!id.startsWith('request:v2:') && !id.startsWith('tavern-v2:')) {
+            legacy += totals;
+          } else if (tavernDeepSeekPeak(DateTime.fromMillisecondsSinceEpoch(timestamp, isUtc: true))) {
             peak += totals;
           } else {
             offPeak += totals;
@@ -309,6 +315,6 @@ class DailyUsageController extends AsyncNotifier<List<DailyUsage>> {
         }
       }
     }
-    return DailyUsage(date, peak, offPeak);
+    return DailyUsage(date, peak, offPeak, legacy);
   }
 }

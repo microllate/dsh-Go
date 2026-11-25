@@ -24,9 +24,9 @@ final tavernProvider = Provider<Tavern>((ref) {
     return openTavern(
       '${support.path}/tavern',
       modelClient: TavernModelClient(
-        onRequestUsage: (endpoint, usage) {
+        onRequestUsage: (endpoint, usage, startedAt) {
           if (ref.mounted) {
-            unawaited(ref.read(dailyUsageProvider.notifier).recordTavern(endpoint, usage, DateTime.now()));
+            unawaited(ref.read(dailyUsageProvider.notifier).recordTavern(endpoint, usage, startedAt));
           }
         },
       ),
